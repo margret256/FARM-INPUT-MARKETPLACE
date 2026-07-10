@@ -38,3 +38,30 @@ export async function resendOtp(identifier: string) {
   );
   return response.data;
 }
+
+export async function forgotPassword(identifier: string) {
+  const response = await apiClient.post<{ message: string; otpSent: boolean }>(
+    '/auth/forgot-password',
+    { identifier },
+  );
+  return response.data;
+}
+
+export async function resetPassword(payload: {
+  identifier: string;
+  code: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  const response = await apiClient.post<{ message: string }>('/auth/reset-password', payload);
+  return response.data;
+}
+
+export async function changePassword(payload: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  const response = await apiClient.post<{ message: string }>('/auth/change-password', payload);
+  return response.data;
+}
