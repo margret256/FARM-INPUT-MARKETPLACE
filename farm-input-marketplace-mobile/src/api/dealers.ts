@@ -24,7 +24,7 @@ export async function uploadDealerDocument(document: DealerDocumentUpload) {
 
     formData.append('file', fileBlob);
 
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+    const apiUrl = String(apiClient.defaults.baseURL ?? '').replace(/\/$/, '');
     console.log('Uploading to:', apiUrl);
 
     const response = await fetch(`${apiUrl}/dealers/documents/upload`, {
@@ -61,5 +61,4 @@ export async function registerDealerApplication(payload: DealerRegisterPayload) 
     throw error;
   }
 }
-
 
