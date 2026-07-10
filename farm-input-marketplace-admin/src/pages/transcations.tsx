@@ -1,30 +1,81 @@
 import { useState } from 'react';
-import { Download, Search, Filter, Wallet, BarChart3, ClipboardList, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
+import { Download, Search, Filter, Wallet, BarChart3, ClipboardList, ChevronLeft, ChevronRight, TrendingUp, RefreshCw } from 'lucide-react';
+import { useTransactions } from '../hooks/useTranscations';
+import type { Transaction, TxStatus } from '../api/transcations';
 
-const ALL_ORDERS = [
-  { id: '#AC-88921', date: 'Oct 24, 2023', amount: '2,400,000', commission: '120,000', status: 'Cleared' },
-  { id: '#AC-88918', date: 'Oct 23, 2023', amount: '850,000',   commission: '42,500',  status: 'Pending' },
-  { id: '#AC-88915', date: 'Oct 23, 2023', amount: '1,200,000', commission: '60,000',  status: 'Cleared' },
-  { id: '#AC-88910', date: 'Oct 22, 2023', amount: '4,150,000', commission: '207,500', status: 'Review'  },
-  { id: '#AC-88907', date: 'Oct 22, 2023', amount: '670,000',   commission: '33,500',  status: 'Cleared' },
-  { id: '#AC-88902', date: 'Oct 21, 2023', amount: '3,100,000', commission: '155,000', status: 'Pending' },
-  { id: '#AC-88899', date: 'Oct 21, 2023', amount: '980,000',   commission: '49,000',  status: 'Cleared' },
-  { id: '#AC-88895', date: 'Oct 20, 2023', amount: '2,750,000', commission: '137,500', status: 'Review'  },
-] as const;
+const PAGE_SIZE = 4;
+const statusTone: Record<TxStatus, 'success' | 'warning' | 'danger'> = {
+  Cleared: 'success',
+  Pending: 'warning',
+  Review: 'danger',
+};
 
-const PAGE_SIZE  = 4;
-const statusTone = { Cleared: 'success', Pending: 'warning', Review: 'danger' } as const;
+function formatUGX(amount: number): string {
+  return `UGX ${amount.toLocaleString('en-US')}`;
+}
+
+function toCsv(rows: Transaction[]): string {
+  const header = ['Order ID', 'Date', 'Amount (UGX)', 'Commission (UGX)', 'Status'];
+  const lines = rows.map((r) => [r.id, r.date, r.amount, r.commission, r.status].join(','));
+  return [header.join(','), ...lines].join('\n');
+}
+
+function downloadCsv(rows: Transaction[]) {
+  const csv = toCsv(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 export default function Transactions() {
-  const [search,    setSearch]    = useState('');
-  const [page,      setPage]      = useState(1);
+  const { data, loading, error, refetch } = useTransactions();
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
 
-  const filtered   = ALL_ORDERS.filter(o => { const q = search.toLowerCase(); return !q || o.id.toLowerCase().includes(q) || o.status.toLowerCase().includes(q); });
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  if (loading && !data) {
+    return (
+      <div className="page-content">
+        <div className="section-card"><p className="section-title">Loading transactions…</p></div>
+      </div>
+    );
+  }
 
-  const handleExport = () => { setExporting(true); setTimeout(() => setExporting(false), 1500); };
+  if (error && !data) {
+    return (
+      <div className="page-content">
+        <div className="section-card">
+          <p className="section-title">Couldn't load transactions</p>
+          <p className="tool-desc">{error}</p>
+          <button className="tool-card" onClick={refetch} style={{ marginTop: 12 }}>
+            <RefreshCw size={18} /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const allTransactions = data?.transactions ?? [];
+  const stats = data?.stats ?? { totalRevenue: 0, commissionEarned: 0, activeOrders: 0 };
+
+  const filtered = allTransactions.filter((t) => {
+    const q = search.toLowerCase();
+    return !q || t.id.toLowerCase().includes(q) || t.status.toLowerCase().includes(q);
+  });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleExport = () => {
+    setExporting(true);
+    downloadCsv(filtered);
+    setTimeout(() => setExporting(false), 800);
+  };
 
   return (
     <div className="page-content">
@@ -33,22 +84,22 @@ export default function Transactions() {
           <h2 className="tx-title">Transaction Management</h2>
           <p className="tx-subtitle">Overview of your agricultural dealership's financial flow.</p>
         </div>
-        <button className="btn-primary" onClick={handleExport} disabled={exporting}>
+        <button className="btn-primary" onClick={handleExport} disabled={exporting || filtered.length === 0}>
           <Download size={16} />{exporting ? 'Exporting…' : 'Export Report'}
         </button>
       </div>
 
       <div className="tx-stats-grid">
         <div className="tx-stat-card">
-          <div className="tx-stat-left"><p className="tx-stat-label">Total Revenue</p><p className="tx-stat-value green">UGX 12,450,000</p></div>
+          <div className="tx-stat-left"><p className="tx-stat-label">Total Revenue</p><p className="tx-stat-value green">{formatUGX(stats.totalRevenue)}</p></div>
           <div className="tx-stat-icon green-bg"><Wallet size={22} /></div>
         </div>
         <div className="tx-stat-card">
-          <div className="tx-stat-left"><p className="tx-stat-label">Commission Earned</p><p className="tx-stat-value orange">UGX 622,500</p></div>
+          <div className="tx-stat-left"><p className="tx-stat-label">Commission Earned</p><p className="tx-stat-value orange">{formatUGX(stats.commissionEarned)}</p></div>
           <div className="tx-stat-icon orange-bg"><BarChart3 size={22} /></div>
         </div>
         <div className="tx-stat-card">
-          <div className="tx-stat-left"><p className="tx-stat-label">Active Orders</p><p className="tx-stat-value orange">48</p></div>
+          <div className="tx-stat-left"><p className="tx-stat-label">Active Orders</p><p className="tx-stat-value orange">{stats.activeOrders}</p></div>
           <div className="tx-stat-icon yellow-bg"><ClipboardList size={22} /></div>
         </div>
       </div>
@@ -72,8 +123,8 @@ export default function Transactions() {
                 <tr key={order.id}>
                   <td className="order-id">{order.id}</td>
                   <td className="muted-text">{order.date}</td>
-                  <td><strong>{order.amount}</strong></td>
-                  <td>{order.commission}</td>
+                  <td><strong>{order.amount.toLocaleString('en-US')}</strong></td>
+                  <td>{order.commission.toLocaleString('en-US')}</td>
                   <td><span className={`pill ${statusTone[order.status]}`}>{order.status}</span></td>
                 </tr>
               ))}
@@ -81,7 +132,7 @@ export default function Transactions() {
           </table>
         </div>
         <div className="pagination">
-          <span className="muted-text">Showing {Math.min((page-1)*PAGE_SIZE+1, filtered.length)}–{Math.min(page*PAGE_SIZE, filtered.length)} of {filtered.length} entries</span>
+          <span className="muted-text">Showing {filtered.length === 0 ? 0 : Math.min((page-1)*PAGE_SIZE+1, filtered.length)}–{Math.min(page*PAGE_SIZE, filtered.length)} of {filtered.length} entries</span>
           <div className="pagination-controls">
             <button className="icon-btn" onClick={() => setPage(p => p-1)} disabled={page===1}><ChevronLeft size={16} /></button>
             {Array.from({ length: totalPages }, (_, i) => i+1).map(p => (
