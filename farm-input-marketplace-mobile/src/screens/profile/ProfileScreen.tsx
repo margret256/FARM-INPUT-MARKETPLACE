@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { getProfile, updateProfile, uploadProfileAvatar } from '@/api/users';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { DealerFloatingTabBar } from '@/components/marketplace/DealerFloatingTabBar';
@@ -21,12 +22,37 @@ export function ProfileScreen({ role = 'farmer' }: ProfileScreenProps) {
   const setProfileImage = useAuthStore((state) => state.setProfileImage);
   const clearSession = useAuthStore((state) => state.clearSession);
   const [editVisible, setEditVisible] = useState(false);
-  const [fullName, setFullName] = useState(user?.firstName || 'Farmer');
-  const [phone, setPhone] = useState('+256 773 815 442');
+  const [fullName, setFullName] = useState(`${user?.firstName ?? 'Farmer'} ${user?.lastName && user.lastName !== '-' ? user.lastName : ''}`.trim());
+  const [phone, setPhone] = useState(user?.phone ?? '+256 773 815 442');
   const [email, setEmail] = useState(user?.email || 'email@example.com');
-  const [location, setLocation] = useState('Wakiso District, Uganda');
+  const [location, setLocation] = useState(user?.dealer?.address ?? 'Wakiso District, Uganda');
   const [farmType, setFarmType] = useState('Mixed Crop Farm');
   const [farmSize, setFarmSize] = useState('12 Hectares');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadProfile() {
+      try {
+        const profile = await getProfile();
+        if (!mounted) return;
+        setFullName(`${profile.firstName} ${profile.lastName && profile.lastName !== '-' ? profile.lastName : ''}`.trim());
+        setPhone(profile.phone);
+        setEmail(profile.email);
+        setLocation(profile.dealer?.address ?? location);
+        if (profile.avatarUrl) {
+          setProfileImage(profile.avatarUrl);
+        }
+      } catch {
+        // Keep session/local profile fallback.
+      }
+    }
+
+    if (user) loadProfile();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
 
   const handleImageUpload = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -40,18 +66,42 @@ export function ProfileScreen({ role = 'farmer' }: ProfileScreenProps) {
       quality: 1,
     });
     if (!result.canceled && result.assets[0]) {
-      setProfileImage(result.assets[0].uri);
+      const asset = result.assets[0];
+      setProfileImage(asset.uri);
+      try {
+        await uploadProfileAvatar({
+          uri: asset.uri,
+          name: asset.fileName ?? 'avatar.jpg',
+          mimeType: asset.mimeType ?? 'image/jpeg',
+        });
+      } catch {
+        Alert.alert('Upload failed', 'The image was selected locally but could not be uploaded.');
+      }
     }
   };
 
   const handleLogout = async () => {
     await clearSession();
+    router.dismissAll();
     router.replace('/role-selection');
   };
 
-  function handleSave() {
-    setEditVisible(false);
-    Alert.alert('Profile Updated', 'Your profile has been updated successfully.');
+  async function handleSave() {
+    const [firstName, ...rest] = fullName.trim().split(/\s+/);
+    try {
+      await updateProfile({
+        firstName: firstName || fullName,
+        lastName: rest.join(' ') || '-',
+        phone,
+        email,
+        businessName: isDealer ? fullName : undefined,
+        address: location,
+      });
+      setEditVisible(false);
+      Alert.alert('Profile Updated', 'Your profile has been updated successfully.');
+    } catch {
+      Alert.alert('Update failed', 'Could not save your profile changes.');
+    }
   }
 
   const isDealer = role === 'dealer';
