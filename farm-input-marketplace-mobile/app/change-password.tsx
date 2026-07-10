@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { changePassword } from '@/services/auth.service';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { marketplaceColors } from '@/constants/marketplace';
@@ -14,6 +15,22 @@ export default function ChangePasswordScreen() {
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  async function handleUpdatePassword() {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert('Missing details', 'Fill in all password fields.');
+      return;
+    }
+
+    try {
+      await changePassword({ currentPassword, newPassword, confirmPassword });
+      Alert.alert('Password updated', 'Your password was changed successfully.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch {
+      Alert.alert('Update failed', 'Could not change your password.');
+    }
+  }
 
   return (
     <StaticScreen>
@@ -81,7 +98,7 @@ export default function ChangePasswordScreen() {
 
           <View style={styles.divider} />
 
-          <Pressable style={styles.button} onPress={() => router.back()}>
+          <Pressable style={styles.button} onPress={handleUpdatePassword}>
             <Text style={styles.buttonText}>Update Password</Text>
           </Pressable>
           <Pressable style={styles.cancelButton} onPress={() => router.back()}>
