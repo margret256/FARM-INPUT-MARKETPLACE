@@ -2,32 +2,20 @@ import {
   Tractor,
   BadgeCheck,
   Wallet,
-  BarChart3,
-  CheckCircle,
   AlertTriangle,
   SlidersHorizontal,
+  RefreshCw,
 } from 'lucide-react';
+import { useAnalytics } from '../hooks/useAnanlytics';
+import type { AnomalyItem, CategorySalesItem, RegionalSalesItem } from '../api/analytics';
 
-const anomalyItems = [
-  {
-    title: 'Unusual volume spike in Fertilizer sales',
-    meta: 'Central Valley Depot - 2 hours ago',
-    tone: 'danger',
-    icon: AlertTriangle,
-  },
-  {
-    title: 'Inventory low: John Deere Parts',
-    meta: 'North Uplands Depot - 5 hours ago',
-    tone: 'warning',
-    icon: SlidersHorizontal,
-  },
-  {
-    title: 'System backup successful',
-    meta: 'Automated - 12 hours ago',
-    tone: 'success',
-    icon: CheckCircle,
-  },
-];
+const CATEGORY_ICONS: Record<string, any> = {
+  Tractors: Tractor,
+  Seeds: BadgeCheck,
+  Fertilizer: Wallet,
+};
+const CATEGORY_TONES = ['green', 'orange', 'yellow'];
+const REGION_TONES = ['green', 'green', 'orange', 'yellow'];
 
 function PanelHeading({ title, action }: { title: string; action?: string }) {
   return (
@@ -81,47 +69,56 @@ function InsightCard({ title, value, body, tone }: { title: string; value: strin
   );
 }
 
-function ActivityRow({ item }: { item: any }) {
-  const Icon = item.icon;
+function AnomalyRow({ item }: { item: AnomalyItem }) {
+  const Icon = item.kind === 'low-stock' ? SlidersHorizontal : AlertTriangle;
   return (
     <div className="activity-row">
       <div className={`activity-icon ${item.tone}`}>
         <Icon size={20} />
       </div>
       <div>
-        <strong>{item.name || item.title}</strong>
+        <strong>{item.title}</strong>
         <span>{item.meta}</span>
       </div>
-      {item.status ? <span className={`status-pill ${item.tone}`}>{item.status}</span> : null}
     </div>
   );
 }
 
-function LineChart() {
+function LineChart({ points }: { points: { label: string; value: number }[] }) {
+  const width = 560;
+  const height = 240;
+  const chartTop = 20;
+  const chartBottom = 210;
+  const left = 24;
+  const right = 536;
+
+  const max = Math.max(1, ...points.map((p) => p.value));
+  const step = points.length > 1 ? (right - left) / (points.length - 1) : 0;
+
+  const coords = points.map((p, i) => {
+    const x = left + i * step;
+    const y = chartBottom - (p.value / max) * (chartBottom - chartTop);
+    return { x, y, label: p.label };
+  });
+
+  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x} ${c.y}`).join(' ');
+  const fillPath = `${linePath} L${right} ${chartBottom + 10} L${left} ${chartBottom + 10} Z`;
+
   return (
     <div className="chart-frame" aria-label="Revenue trend chart">
-      <svg viewBox="0 0 560 240" role="img">
-        <title>Revenue rises from January through June with a brief dip in May.</title>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img">
+        <title>Monthly revenue over the last six months.</title>
         <defs>
           <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#2E7D32" stopOpacity="0.2" />
             <stop offset="100%" stopColor="#2E7D32" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path
-          d="M24 210 C80 190 112 150 168 132 C234 110 260 98 318 82 C376 64 396 18 452 70 C504 118 512 124 536 34 L536 220 L24 220 Z"
-          fill="url(#lineFill)"
-        />
-        <path
-          d="M24 210 C80 190 112 150 168 132 C234 110 260 98 318 82 C376 64 396 18 452 70 C504 118 512 124 536 34"
-          fill="none"
-          stroke="#1B5E20"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        {['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN'].map((month, index) => (
-          <text key={month} x={44 + index * 94} y="232" fontSize="16" fill="#747970">
-            {month}
+        <path d={fillPath} fill="url(#lineFill)" />
+        <path d={linePath} fill="none" stroke="#1B5E20" strokeWidth="4" strokeLinecap="round" />
+        {coords.map((c) => (
+          <text key={c.label} x={c.x - 12} y="232" fontSize="16" fill="#747970">
+            {c.label}
           </text>
         ))}
       </svg>
@@ -129,7 +126,34 @@ function LineChart() {
   );
 }
 
+function formatUsd(amount: number): string {
+  return `$${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+}
+
 export default function Analytics() {
+  const { data, loading, error, refetch } = useAnalytics();
+
+  if (loading && !data) {
+    return <div className="analytics-grid"><section className="panel"><p>Loading analytics…</p></section></div>;
+  }
+
+  if (error && !data) {
+    return (
+      <div className="analytics-grid">
+        <section className="panel">
+          <p>Couldn't load analytics data</p>
+          <p>{error}</p>
+          <button onClick={refetch}><RefreshCw size={18} /> Retry</button>
+        </section>
+      </div>
+    );
+  }
+
+  const revenueTrend = data?.revenueTrend ?? [];
+  const regionalSales: RegionalSalesItem[] = data?.regionalSales ?? [];
+  const topCategories: CategorySalesItem[] = data?.topCategories ?? [];
+  const anomalies = data?.anomalies ?? [];
+
   return (
     <div className="analytics-grid">
       <section className="panel chart-panel">
@@ -139,40 +163,53 @@ export default function Analytics() {
             <p>Monthly growth and projections</p>
           </div>
           <div className="chart-total">
-            <strong>$142,850</strong>
-            <span>+12.4% vs last mo.</span>
+            <strong>{formatUsd(data?.revenueTotal ?? 0)}</strong>
+            <span>
+              {data?.revenueChangePercent == null
+                ? 'No prior-month data'
+                : `${data.revenueChangePercent >= 0 ? '+' : ''}${data.revenueChangePercent.toFixed(1)}% vs last mo.`}
+            </span>
           </div>
         </div>
-        <LineChart />
+        <LineChart points={revenueTrend} />
       </section>
 
       <section className="panel region-panel">
         <PanelHeading title="Regional Sales" />
-        <Progress label="Central Valley" value="42%" width="42%" tone="green" />
-        <Progress label="North Uplands"  value="28%" width="28%" tone="green" />
-        <Progress label="South Delta"    value="18%" width="18%" tone="orange" />
-        <Progress label="Eastern Plains" value="12%" width="12%" tone="yellow" />
+        {regionalSales.length === 0 && <p>No regional data yet.</p>}
+        {regionalSales.map((r, i) => (
+          <Progress key={r.region} label={r.region} value={`${r.percent}%`} width={`${r.percent}%`} tone={REGION_TONES[i] ?? 'green'} />
+        ))}
         <img src="/images/farm.png" alt="Farm landscape" className="regional-image" />
       </section>
 
       <section className="panel top-categories">
         <PanelHeading title="Top Categories" />
-        <CategoryBar icon={Tractor}    label="Tractors"   value="$45.2k" width="86%" tone="green" />
-        <CategoryBar icon={BadgeCheck} label="Seeds"      value="$32.1k" width="66%" tone="orange" />
-        <CategoryBar icon={Wallet}     label="Fertilizer" value="$18.4k" width="42%" tone="yellow" />
+        {topCategories.length === 0 && <p>No category sales data yet.</p>}
+        {topCategories.map((c, i) => (
+          <CategoryBar
+            key={c.category}
+            icon={CATEGORY_ICONS[c.category] ?? Wallet}
+            label={c.category}
+            value={formatUsd(c.amount)}
+            width={`${c.percent}%`}
+            tone={CATEGORY_TONES[i] ?? 'green'}
+          />
+        ))}
       </section>
 
       <div className="insight-stack">
-        <InsightCard title="Active Users" value="1,284" body="+5.2% Daily"    tone="success" />
-        <InsightCard title="Order Volume" value="432"   body="Avg $330/order" tone="orange" />
-        <InsightCard title="Lead Conv."   value="18.4%" body="Optimized"      tone="yellow" />
+        <InsightCard title="Active Users" value={String(data?.activeUsers ?? 0)} body="Currently active accounts" tone="success" />
+        <InsightCard title="Order Volume" value={String(data?.orderVolumeThisMonth ?? 0)} body={`Avg ${formatUsd(data?.avgOrderValue ?? 0)}/order`} tone="orange" />
+        <InsightCard title="Lead Conv." value="—" body="Needs leads endpoint" tone="yellow" />
       </div>
 
       <section className="panel anomaly-panel">
         <PanelHeading title="Anomalous Activity" action="View All Alerts" />
         <div className="activity-list">
-          {anomalyItems.map((item) => (
-            <ActivityRow key={item.title} item={item} />
+          {anomalies.length === 0 && <p>No anomalies detected.</p>}
+          {anomalies.map((item) => (
+            <AnomalyRow key={item.id} item={item} />
           ))}
         </div>
       </section>
