@@ -1,11 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { checkoutCart, getCart, type CartResponse } from '@/api/cart';
+import { listDeliveryAddresses, type DeliveryAddress } from '@/api/delivery-addresses';
+import { formatUgx, productImage } from '@/api/marketplace-adapters';
+import { createOrder } from '@/api/orders';
+import { listPaymentMethods, type PaymentMethod } from '@/api/payments';
 import { AppHeader } from '@/components/marketplace/AppHeader';
 import { appImages } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 const deliveryMethods = [
   ['Standard Delivery', '3-5 Business Days', 'UGX 5,000', true],
@@ -20,6 +27,76 @@ const paymentMethods = [
 ] as const;
 
 export function CheckoutScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [cart, setCart] = useState<CartResponse | undefined>();
+  const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
+  const [methods, setMethods] = useState<PaymentMethod[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadCheckout() {
+      try {
+        const [nextCart, nextAddresses, nextMethods] = await Promise.all([
+          getCart(user?.id),
+          listDeliveryAddresses(user?.id),
+          listPaymentMethods(user?.id),
+        ]);
+        if (!mounted) return;
+        setCart(nextCart);
+        setAddresses(nextAddresses.items);
+        setMethods(nextMethods);
+      } catch {
+        // Keep static checkout fallback while the API is unavailable.
+      }
+    }
+
+    loadCheckout();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
+  const selectedAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
+  const selectedMethod = methods.find((method) => method.isDefault) ?? methods[0];
+  const summary = cart?.summary ?? {
+    subtotal: 209000,
+    deliveryFee: 5000,
+    tax: 0,
+    total: 214000,
+    itemCount: 2,
+  };
+  const summaryItems = cart?.items.length
+    ? cart.items
+    : [
+        { id: 'seed', product: { name: 'Hybrid Maize Seeds' }, quantity: 2, unitPrice: 42000, lineTotal: 84000 },
+        { id: 'npk', product: { name: 'NPK Fertilizer' }, quantity: 1, unitPrice: 125000, lineTotal: 125000 },
+      ];
+
+  async function handleConfirmOrder() {
+    try {
+      await checkoutCart({
+        userId: user?.id,
+        deliveryAddressId: selectedAddress?.id,
+        paymentMethodId: selectedMethod?.id,
+      });
+      const order = await createOrder({
+        userId: user?.id ?? 'guest',
+        total: summary.total,
+        items: summaryItems,
+      });
+      router.push({
+        pathname: '/mobile-money-payment',
+        params: { orderId: order.id, amount: String(summary.total) },
+      });
+    } catch {
+      router.push({
+        pathname: '/mobile-money-payment',
+        params: { amount: String(summary.total) },
+      });
+    }
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <AppHeader back help title="Checkout" />
@@ -33,9 +110,9 @@ export function CheckoutScreen() {
         <View style={[styles.addressCard, marketplaceShadows.card]}>
           <Ionicons name="location-outline" size={18} color={marketplaceColors.primaryDark} />
           <View style={styles.addressBody}>
-            <Text style={styles.addressTitle}>Primary Farm Office</Text>
-            <Text style={styles.addressText}>Plot 45, Green Valley Industrial Hub, Wakiso District, Uganda</Text>
-            <Text style={styles.addressText}>+256 701 234 567</Text>
+            <Text style={styles.addressTitle}>{selectedAddress?.label ?? 'Primary Farm Office'}</Text>
+            <Text style={styles.addressText}>{selectedAddress?.address ?? 'Plot 45, Green Valley Industrial Hub, Wakiso District, Uganda'}</Text>
+            <Text style={styles.addressText}>{selectedAddress?.phone ?? '+256 701 234 567'}</Text>
           </View>
           <Ionicons name="pencil" size={14} color={marketplaceColors.inkMuted} />
         </View>
@@ -60,7 +137,15 @@ export function CheckoutScreen() {
         {/* Payment Method */}
         <Text style={styles.sectionTitle}>Payment Method</Text>
         <View style={styles.methodList}>
-          {paymentMethods.map(([title, bg, fg, selected]) => (
+          {(methods.length
+            ? methods.map((method) => [
+                method.type,
+                method.provider.includes('Airtel') ? '#8E1717' : method.type.includes('Cash') ? '#E2E8DC' : '#14392E',
+                method.provider.includes('Airtel') ? '#EF4444' : method.type.includes('Cash') ? '#344033' : '#FBC02D',
+                method.id === selectedMethod?.id,
+              ] as const)
+            : paymentMethods
+          ).map(([title, bg, fg, selected]) => (
             <View key={title} style={styles.paymentCard}>
 <View style={[styles.paymentIcon, { backgroundColor: bg, borderColor: fg }]}>
                 <Ionicons
@@ -80,35 +165,30 @@ export function CheckoutScreen() {
         {/* Order Summary */}
         <View style={styles.summary}>
           <Text style={styles.summaryTitle}>Order Summary</Text>
-          <View style={styles.summaryItem}>
-            <Image source={appImages.fastPayments} style={styles.summaryImage} />
-            <View style={styles.summaryBody}>
-              <Text style={styles.summaryName}>Hybrid Maize Seeds</Text>
-              <Text style={styles.summaryMeta}>2 x 5kg Bags</Text>
+          {summaryItems.map((item, index) => (
+            <View key={item.id}>
+              <View style={styles.summaryItem}>
+                <Image source={cart?.items.length ? productImage(index) : index === 0 ? appImages.fastPayments : appImages.betterYields} style={styles.summaryImage} />
+                <View style={styles.summaryBody}>
+                  <Text style={styles.summaryName}>{item.product?.name ?? 'Marketplace item'}</Text>
+                  <Text style={styles.summaryMeta}>{item.quantity} item(s)</Text>
+                </View>
+                <Text style={styles.summaryPrice}>{formatUgx(item.lineTotal)}</Text>
+              </View>
+              <View style={styles.summaryLine} />
             </View>
-            <Text style={styles.summaryPrice}>UGX 84,000</Text>
-          </View>
-          <View style={styles.summaryLine} />
-          <View style={styles.summaryItem}>
-            <Image source={appImages.betterYields} style={styles.summaryImage} />
-            <View style={styles.summaryBody}>
-              <Text style={styles.summaryName}>NPK Fertilizer</Text>
-              <Text style={styles.summaryMeta}>1 x 25kg Bag</Text>
-            </View>
-            <Text style={styles.summaryPrice}>UGX 125,000</Text>
-          </View>
-          <View style={styles.summaryLine} />
+          ))}
           <View style={styles.totalsRow}>
             <Text style={styles.totalMuted}>Subtotal</Text>
-            <Text style={styles.totalMuted}>UGX 209,000</Text>
+            <Text style={styles.totalMuted}>{formatUgx(summary.subtotal)}</Text>
           </View>
           <View style={styles.totalsRow}>
             <Text style={styles.totalMuted}>Delivery Fee</Text>
-            <Text style={styles.totalMuted}>UGX 5,000</Text>
+            <Text style={styles.totalMuted}>{formatUgx(summary.deliveryFee)}</Text>
           </View>
           <View style={[styles.totalsRow, styles.totalFinalRow]}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>UGX 214,000</Text>
+            <Text style={styles.totalValue}>{formatUgx(summary.total)}</Text>
           </View>
         </View>
 
@@ -116,7 +196,7 @@ export function CheckoutScreen() {
 
       {/* Confirm Button */}
       <View style={styles.bottom}>
-        <Pressable onPress={() => router.push('/mobile-money-payment')} style={styles.confirmButton}>
+        <Pressable onPress={handleConfirmOrder} style={styles.confirmButton}>
           <Text style={styles.confirmText}>Confirm Order</Text>
           <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
         </Pressable>
