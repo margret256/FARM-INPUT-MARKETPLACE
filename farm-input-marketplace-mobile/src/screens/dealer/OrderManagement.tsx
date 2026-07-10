@@ -1,10 +1,14 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { formatUgx } from '@/api/marketplace-adapters';
+import { listOrders, updateOrderStatus, type ApiOrder } from '@/api/orders';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
 import { DealerFloatingTabBar } from '@/components/marketplace/DealerFloatingTabBar';
+import { useAuthStore } from '@/store/auth.store';
 
 type OrderStatus = 'NEW ORDER' | 'Processing' | 'Shipped';
 
@@ -65,8 +69,52 @@ const ORDER_ITEMS = [
 ];
 
 export function OrderManagementScreen() {
-  const tabs = ['All Orders (24)', 'New (3)', 'Processing (12)', 'Shipped (9)'];
+  const user = useAuthStore((state) => state.user);
+  const [orders, setOrders] = useState<Order[]>(ORDERS);
+  const tabs = [`All Orders (${orders.length})`, 'New', 'Processing', 'Shipped'];
   const activeTab = 0;
+
+  async function loadOrders() {
+    try {
+      const response = await listOrders({ dealerId: user?.dealer?.id });
+      if (response.items.length === 0) return;
+      setOrders(response.items.map(toDealerOrder));
+    } catch {
+      // Keep local fallback orders.
+    }
+  }
+
+  useEffect(() => {
+    loadOrders();
+  }, [user?.dealer?.id]);
+
+  function toDealerOrder(order: ApiOrder): Order {
+    const status: OrderStatus =
+      order.status === 'PENDING'
+        ? 'NEW ORDER'
+        : order.status === 'SHIPPED' || order.status === 'DELIVERED'
+          ? 'Shipped'
+          : 'Processing';
+
+    return {
+      id: order.id,
+      product: order.items?.[0]?.product?.name ?? 'Marketplace order',
+      orderId: `#${order.number}`,
+      timeAgo: new Date(order.createdAt).toLocaleString(),
+      customer: order.customer
+        ? `${order.customer.firstName} ${order.customer.lastName}`.replace(' -', '')
+        : 'Customer',
+      customerRole: 'Verified Buyer',
+      amount: formatUgx(order.total),
+      status,
+    };
+  }
+
+  async function handleStatus(orderId: string, status: 'CONFIRMED' | 'CANCELLED') {
+    if (orderId.startsWith('fallback-')) return;
+    await updateOrderStatus(orderId, status);
+    await loadOrders();
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -107,7 +155,7 @@ export function OrderManagementScreen() {
         </ScrollView>
 
         {/* Orders */}
-        {ORDERS.map((order) => {
+        {orders.map((order) => {
           const statusStyle = STATUS_STYLE[order.status];
           const isNew = order.status === 'NEW ORDER';
 
@@ -160,10 +208,10 @@ export function OrderManagementScreen() {
 
               {isNew && (
                 <View style={styles.actionButtonsRow}>
-                  <Pressable style={styles.rejectButton}>
+                  <Pressable style={styles.rejectButton} onPress={() => handleStatus(order.id, 'CANCELLED')}>
                     <Text style={styles.rejectButtonText}>Reject</Text>
                   </Pressable>
-                  <Pressable style={styles.acceptButton}>
+                  <Pressable style={styles.acceptButton} onPress={() => handleStatus(order.id, 'CONFIRMED')}>
                     <Text style={styles.acceptButtonText}>Accept Order</Text>
                   </Pressable>
                 </View>
