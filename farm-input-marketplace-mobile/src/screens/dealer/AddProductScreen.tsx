@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,6 +44,7 @@ export function AddProductScreen() {
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState(100);
   const [description, setDescription] = useState('');
+  const [images, setImages] = useState<(string | null)[]>([null, null, null, null, null]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -56,22 +59,39 @@ export function AddProductScreen() {
           setCategories(nextCategories);
         }
       } catch {
-        if (mounted) {
-          setCategories(fallbackCategories);
-        }
+        if (mounted) setCategories(fallbackCategories);
       } finally {
-        if (mounted) {
-          setLoadingCategories(false);
-        }
+        if (mounted) setLoadingCategories(false);
       }
     }
 
     loadCategories();
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
+
+  async function handlePickImage(index: number) {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Allow access to your photo library to add images.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const next = [...images];
+        next[index] = result.assets[0].uri;
+        setImages(next);
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  }
 
   function resetForm() {
     setProductName('');
@@ -80,6 +100,7 @@ export function AddProductScreen() {
     setQuantity(100);
     setDescription('');
     setShowCategoryDropdown(false);
+    setImages([null, null, null, null, null]);
   }
 
   async function handlePublish() {
@@ -131,10 +152,9 @@ export function AddProductScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-       <AppHeader title="AgroConnect" hideActions={true} />
+      <AppHeader title="AgroConnect" hideActions={true} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-        {/* Breadcrumb */}
         <View style={styles.breadcrumb}>
           <Text style={styles.breadcrumbMuted}>Inventory</Text>
           <Ionicons name="chevron-forward" size={12} color={marketplaceColors.inkMuted} />
@@ -150,35 +170,43 @@ export function AddProductScreen() {
         <View style={styles.card}>
           <Text style={styles.cardLabel}>PRODUCT GALLERY</Text>
           <View style={styles.galleryGrid}>
-            {/* Primary large slot */}
-            <Pressable style={styles.primarySlot}>
-              <Ionicons name="camera-outline" size={28} color={marketplaceColors.primary} />
-              <Text style={styles.primarySlotText}>Primary Photo</Text>
+            <Pressable style={styles.primarySlot} onPress={() => handlePickImage(0)}>
+              {images[0] ? (
+                <Image source={{ uri: images[0] }} style={styles.slotImage} />
+              ) : (
+                <>
+                  <Ionicons name="camera-outline" size={28} color={marketplaceColors.primary} />
+                  <Text style={styles.primarySlotText}>Primary Photo</Text>
+                </>
+              )}
             </Pressable>
-            {/* Right column */}
             <View style={styles.galleryRight}>
-              <Pressable style={styles.smallSlot}>
-                <Ionicons name="add" size={22} color={marketplaceColors.inkMuted} />
-              </Pressable>
-              <Pressable style={styles.smallSlot}>
-                <Ionicons name="add" size={22} color={marketplaceColors.inkMuted} />
-              </Pressable>
+              {[1, 2].map((i) => (
+                <Pressable key={i} style={styles.smallSlot} onPress={() => handlePickImage(i)}>
+                  {images[i] ? (
+                    <Image source={{ uri: images[i]! }} style={styles.slotImage} />
+                  ) : (
+                    <Ionicons name="add" size={22} color={marketplaceColors.inkMuted} />
+                  )}
+                </Pressable>
+              ))}
             </View>
           </View>
-          {/* Bottom row */}
           <View style={styles.galleryBottom}>
-            <Pressable style={styles.bottomSlot}>
-              <Ionicons name="add" size={22} color={marketplaceColors.inkMuted} />
-            </Pressable>
-            <Pressable style={styles.bottomSlot}>
-              <Ionicons name="add" size={22} color={marketplaceColors.inkMuted} />
-            </Pressable>
+            {[3, 4].map((i) => (
+              <Pressable key={i} style={styles.bottomSlot} onPress={() => handlePickImage(i)}>
+                {images[i] ? (
+                  <Image source={{ uri: images[i]! }} style={styles.slotImage} />
+                ) : (
+                  <Ionicons name="add" size={22} color={marketplaceColors.inkMuted} />
+                )}
+              </Pressable>
+            ))}
           </View>
         </View>
 
         {/* Product Details */}
         <View style={styles.card}>
-          {/* Product Name */}
           <View style={styles.fieldWrap}>
             <Text style={styles.fieldLabel}>PRODUCT NAME</Text>
             <TextInput
@@ -190,12 +218,11 @@ export function AddProductScreen() {
             />
           </View>
 
-          {/* Category */}
           <View style={styles.fieldWrap}>
             <Text style={styles.fieldLabel}>CATEGORY</Text>
             <Pressable
               style={styles.selectInput}
-              onPress={() => setShowCategoryDropdown((value) => !value)}
+              onPress={() => setShowCategoryDropdown((v) => !v)}
               disabled={loadingCategories}
             >
               <Text style={[styles.selectText, selectedCategory && styles.selectTextActive]}>
@@ -223,7 +250,6 @@ export function AddProductScreen() {
             )}
           </View>
 
-          {/* Price */}
           <View style={styles.fieldWrap}>
             <Text style={styles.fieldLabel}>PRICE (UGX)</Text>
             <View style={styles.priceInput}>
@@ -239,20 +265,19 @@ export function AddProductScreen() {
             </View>
           </View>
 
-          {/* Quantity */}
           <View style={styles.fieldWrap}>
             <Text style={styles.fieldLabel}>QUANTITY AVAILABLE</Text>
             <View style={styles.qtyRow}>
               <Pressable
                 style={styles.qtyBtn}
-                onPress={() => setQuantity((value) => Math.max(0, value - 1))}
+                onPress={() => setQuantity((v) => Math.max(0, v - 1))}
               >
                 <Ionicons name="remove" size={20} color={marketplaceColors.primaryDark} />
               </Pressable>
               <Text style={styles.qtyValue}>{quantity}</Text>
               <Pressable
                 style={styles.qtyBtn}
-                onPress={() => setQuantity((value) => value + 1)}
+                onPress={() => setQuantity((v) => v + 1)}
               >
                 <Ionicons name="add" size={20} color={marketplaceColors.primaryDark} />
               </Pressable>
@@ -297,10 +322,10 @@ export function AddProductScreen() {
           </Pressable>
         </View>
 
-       </ScrollView>
-       <DealerFloatingTabBar active="cart" />
-     </SafeAreaView>
-   );
+      </ScrollView>
+      <DealerFloatingTabBar active="cart" />
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -344,6 +369,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    overflow: 'hidden',
   },
   primarySlotText: {
     color: marketplaceColors.primary,
@@ -363,6 +389,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7FAF0',
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 74,
+    overflow: 'hidden',
   },
   galleryBottom: {
     flexDirection: 'row',
@@ -379,6 +407,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7FAF0',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  slotImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 9,
   },
   fieldWrap: { marginBottom: 16 },
   fieldLabel: {
@@ -410,6 +444,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   selectText: { fontSize: 13, color: '#BCBCBC' },
+  selectTextActive: { color: '#101710' },
+  dropdown: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DDE6D6',
+    backgroundColor: '#FFFFFF',
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F4ED',
+  },
+  dropdownItemText: { fontSize: 13, color: '#101710' },
   priceInput: {
     height: 44,
     borderRadius: 8,
@@ -463,31 +513,8 @@ const styles = StyleSheet.create({
   },
   descTip: { flex: 1, fontSize: 10, color: marketplaceColors.inkMuted, fontStyle: 'italic' },
   descCount: { fontSize: 11, color: marketplaceColors.inkMuted, fontWeight: '700' },
-  bottom: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 70,
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: marketplaceColors.screen,
-    borderTopWidth: 1,
-    borderTopColor: '#DDE6D6',
-  },
-  draftButton: {
-    flex: 1,
-    height: 46,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: marketplaceColors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  draftText: { color: marketplaceColors.primaryDark, fontSize: 14, fontWeight: '800' },
+  actionRow: { marginTop: 4 },
   publishButton: {
-    flex: 1.4,
     height: 46,
     borderRadius: 24,
     backgroundColor: marketplaceColors.primaryDark,
@@ -496,5 +523,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
+  disabledButton: { opacity: 0.6 },
   publishText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
 });
