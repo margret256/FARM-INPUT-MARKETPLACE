@@ -1,22 +1,60 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { formatUgx } from '@/api/marketplace-adapters';
+import { compareProductPrices } from '@/api/products';
 import { AppScreen } from '@/components/marketplace/AppScreen';
 import { appImages, dealerOffers } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
 
 export function ComparePricesScreen() {
+  const [offers, setOffers] = useState(dealerOffers);
+  const [summaryTitle, setSummaryTitle] = useState('Premium Urea Fertilizer');
+  const [summaryCategory, setSummaryCategory] = useState('Fertilizer');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadOffers() {
+      try {
+        const response = await compareProductPrices();
+        if (!mounted || response.items.length === 0) return;
+        setSummaryTitle(response.items[0].name);
+        setSummaryCategory(response.items[0].category?.name ?? 'Input');
+        setOffers(
+          response.items.map((product, index) => ({
+            name: product.dealer?.businessName ?? 'AgroConnect Dealer',
+            price: formatUgx(product.price),
+            delivery: 'Delivery calculated at checkout',
+            rating: 'New dealer',
+            status: product.statusDetail,
+            selected: index === 0,
+            icon: 'storefront-outline' as const,
+          })),
+        );
+      } catch {
+        // Keep local fallback offers.
+      }
+    }
+
+    loadOffers();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <AppScreen back title="Compare Prices">
         <View style={[styles.productSummary, marketplaceShadows.card]}>
           <Image source={appImages.betterYields} style={styles.summaryImage} />
           <View style={styles.summaryBody}>
-            <Text style={styles.summaryTitle}>Premium Urea Fertilizer</Text>
+            <Text style={styles.summaryTitle}>{summaryTitle}</Text>
             <View style={styles.tags}>
-              <Text style={styles.tag}>Fertilizer</Text>
+              <Text style={styles.tag}>{summaryCategory}</Text>
               <Text style={styles.bag}>50kg Bag</Text>
             </View>
           </View>
@@ -27,7 +65,7 @@ export function ComparePricesScreen() {
           <Text style={styles.filter}>Nearest Dealer</Text>
         </View>
         <View style={styles.offerList}>
-          {dealerOffers.map((offer) => (
+          {offers.map((offer) => (
             <View key={offer.name} style={[styles.offerCard, offer.selected && styles.selectedOffer]}>
               {offer.selected ? <Text style={styles.bestValue}>BEST VALUE</Text> : null}
               <View style={styles.offerTop}>
@@ -72,7 +110,7 @@ export function ComparePricesScreen() {
       <View style={styles.bottom}>
         <View>
           <Text style={styles.totalSelected}>Total Selected</Text>
-          <Text style={styles.total}>UGX 87,000</Text>
+          <Text style={styles.total}>{offers[0]?.price ?? 'UGX 87,000'}</Text>
         </View>
         <View style={styles.qty}>
           <Text style={styles.qtySymbol}>-</Text>
