@@ -1,6 +1,9 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { productToCard } from '@/api/marketplace-adapters';
+import { listProducts } from '@/api/products';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { ProductCard } from '@/components/marketplace/ProductCard';
@@ -12,10 +15,41 @@ import {
 } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
 import { useAuthStore } from '@/store/auth.store';
+import type { ProductItem } from '@/constants/mock-marketplace';
 
 export function FarmerHomeScreen() {
   const user = useAuthStore((state) => state.user);
   const profileImage = useAuthStore((state) => state.profileImage);
+  const [featured, setFeatured] = useState<ProductItem[]>(featuredProducts);
+  const [recommended, setRecommended] = useState(recommendedProducts);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadProducts() {
+      try {
+        const response = await listProducts();
+        if (!mounted || response.items.length === 0) return;
+        const cards = response.items.map(productToCard);
+        setFeatured(cards.slice(0, 2));
+        setRecommended(
+          cards.slice(2, 4).map((item) => ({
+            name: item.name,
+            subtitle: item.subtitle,
+            price: item.price,
+            image: item.image,
+          })),
+        );
+      } catch {
+        // Keep bundled fallback content when the API is offline.
+      }
+    }
+
+    loadProducts();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <StaticScreen>
@@ -73,14 +107,14 @@ export function FarmerHomeScreen() {
           <Text style={styles.viewAll}>See More</Text>
         </View>
         <View style={styles.productRow}>
-          {featuredProducts.map((product) => (
+          {featured.map((product) => (
             <ProductCard key={product.id} compact product={product} />
           ))}
         </View>
 
         <Text style={styles.sectionTitle}>Recommended for You</Text>
         <View style={styles.recommendedList}>
-          {recommendedProducts.map((item) => (
+          {recommended.map((item) => (
             <View key={item.name} style={[styles.recommendedCard, marketplaceShadows.card]}>
               <Image source={item.image} style={styles.recommendedImage} />
               <View style={styles.recommendedBody}>
