@@ -1,16 +1,69 @@
 // CartScreen.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getCart, removeCartItem, updateCartItem, type CartResponse } from '@/api/cart';
+import { formatUgx, productImage } from '@/api/marketplace-adapters';
 import { AppHeader } from '@/components/marketplace/AppHeader';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { cartItems } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 export function CartScreen() {
   const insets = useSafeAreaInsets();
+  const user = useAuthStore((state) => state.user);
+  const [cart, setCart] = useState<CartResponse | undefined>();
+
+  async function loadCart() {
+    try {
+      setCart(await getCart(user?.id));
+    } catch {
+      setCart(undefined);
+    }
+  }
+
+  useEffect(() => {
+    loadCart();
+  }, [user?.id]);
+
+  const displayItems =
+    cart?.items.length
+      ? cart.items.map((item, index) => ({
+          id: item.id,
+          name: item.product?.name ?? 'Marketplace item',
+          description: item.product?.description ?? item.product?.category?.name ?? 'Agro input',
+          price: formatUgx(item.unitPrice),
+          quantity: item.quantity,
+          image: productImage(index),
+        }))
+      : cartItems.map((item, index) => ({
+          id: `fallback-${index}`,
+          ...item,
+        }));
+
+  const summary = cart?.summary ?? {
+    subtotal: 202.5,
+    deliveryFee: 15,
+    tax: 18.22,
+    total: 235.72,
+    itemCount: 3,
+  };
+
+  async function changeQuantity(id: string, quantity: number) {
+    if (id.startsWith('fallback-')) return;
+    await updateCartItem(id, { userId: user?.id, quantity: Math.max(1, quantity) });
+    await loadCart();
+  }
+
+  async function removeItem(id: string) {
+    if (id.startsWith('fallback-')) return;
+    await removeCartItem(id, user?.id);
+    await loadCart();
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -19,8 +72,8 @@ export function CartScreen() {
         <Text style={styles.title}>Your Cart</Text>
         <Text style={styles.subtitle}>Review items before checkout</Text>
         <View style={styles.items}>
-          {cartItems.map((item) => (
-            <View key={item.name} style={[styles.itemCard, marketplaceShadows.card]}>
+          {displayItems.map((item) => (
+            <View key={item.id} style={[styles.itemCard, marketplaceShadows.card]}>
               <Image source={item.image} style={styles.itemImage} />
               <View style={styles.itemBody}>
                 <View style={styles.itemTop}>
@@ -30,11 +83,15 @@ export function CartScreen() {
                 <Text style={styles.itemDescription} numberOfLines={2}>{item.description}</Text>
                 <View style={styles.controls}>
                   <View style={styles.qty}>
-                    <Text style={styles.qtyIcon}>−</Text>
+                    <Pressable onPress={() => changeQuantity(item.id, item.quantity - 1)}>
+                      <Text style={styles.qtyIcon}>−</Text>
+                    </Pressable>
                     <Text style={styles.qtyText}>{item.quantity}</Text>
-                    <Text style={styles.qtyIcon}>+</Text>
+                    <Pressable onPress={() => changeQuantity(item.id, item.quantity + 1)}>
+                      <Text style={styles.qtyIcon}>+</Text>
+                    </Pressable>
                   </View>
-                  <Pressable style={styles.actionBtn}>
+                  <Pressable style={styles.actionBtn} onPress={() => removeItem(item.id)}>
                     <Ionicons name="bookmark-outline" size={12} color="#A84900" />
                     <Text style={styles.save}>Save</Text>
                   </Pressable>
@@ -50,9 +107,9 @@ export function CartScreen() {
         <View style={styles.summary}>
           <Text style={styles.summaryTitle}>Order Summary</Text>
           {[
-            ['Subtotal (3 items)', '$202.50'],
-            ['Delivery Fee', '$15.00'],
-            ['Taxes (VAT)', '$18.22'],
+            [`Subtotal (${summary.itemCount} items)`, formatUgx(summary.subtotal)],
+            ['Delivery Fee', formatUgx(summary.deliveryFee)],
+            ['Taxes (VAT)', formatUgx(summary.tax)],
           ].map(([label, value]) => (
             <View key={label} style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>{label}</Text>
@@ -62,7 +119,7 @@ export function CartScreen() {
           <View style={styles.summaryLine} />
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalValue}>$235.72</Text>
+            <Text style={styles.totalValue}>{formatUgx(summary.total)}</Text>
           </View>
         </View>
       </ScrollView>
