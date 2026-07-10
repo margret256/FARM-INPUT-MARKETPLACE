@@ -1,30 +1,86 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { addCartItem } from '@/api/cart';
+import { formatUgx, productImage } from '@/api/marketplace-adapters';
+import { listWishlist, removeWishlistItem } from '@/api/wishlist';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { wishlistItems } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 export function WishlistScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [items, setItems] = useState(
+    wishlistItems.map((item) => ({ ...item, wishlistId: item.id })),
+  );
+
+  async function loadWishlist() {
+    try {
+      const response = await listWishlist(user?.id);
+      if (response.items.length === 0) return;
+      setItems(
+        response.items.map((item, index) => {
+          const product = item.product ?? {};
+          const stock = Number(product.stock ?? 1);
+          return {
+            id: product.id ?? item.productId ?? item.id,
+            wishlistId: item.id,
+            name: product.name ?? 'Wishlist product',
+            subtitle: product.description ?? product.category?.name ?? 'Saved item',
+            price: formatUgx(product.price),
+            rating: '',
+            image: productImage(index),
+            status: stock === 0 ? 'out-of-stock' : stock <= 20 ? 'low-stock' : 'in-stock',
+          };
+        }),
+      );
+    } catch {
+      // Keep bundled fallback data when the API is unavailable.
+    }
+  }
+
+  useEffect(() => {
+    loadWishlist();
+  }, [user?.id]);
+
+  async function handleRemove(id: string) {
+    try {
+      await removeWishlistItem(id, user?.id);
+      await loadWishlist();
+    } catch {
+      setItems((current) => current.filter((item) => item.wishlistId !== id));
+    }
+  }
+
+  async function handleAddToCart(productId: string) {
+    try {
+      await addCartItem({ userId: user?.id, productId, quantity: 1 });
+    } finally {
+      router.push('/cart');
+    }
+  }
+
   return (
     <StaticScreen>
       <AppScreen title="AgroMarket">
         <Text style={styles.title}>My Wishlist</Text>
-        <Text style={styles.subtitle}>You have 6 items saved for later planting and tool upgrades.</Text>
+        <Text style={styles.subtitle}>You have {items.length} items saved for later planting and tool upgrades.</Text>
         <View style={styles.chips}>
           {['All Items', 'Seeds', 'Equipment', 'Fertilizer'].map((chip, index) => (
             <Text key={chip} style={[styles.chip, index === 0 && styles.activeChip]}>{chip}</Text>
           ))}
         </View>
         <View style={styles.list}>
-          {wishlistItems.map((item) => (
+          {items.map((item) => (
             <View key={item.id} style={[styles.card, marketplaceShadows.card]}>
               <Image source={item.image} style={styles.image} />
-              <View style={styles.heart}>
+              <Pressable style={styles.heart} onPress={() => handleRemove(item.wishlistId)}>
                 <Ionicons name="heart-outline" size={16} color={marketplaceColors.primaryDark} />
-              </View>
+              </Pressable>
               <View style={styles.body}>
                 <View style={styles.nameRow}>
                   <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
@@ -43,7 +99,7 @@ export function WishlistScreen() {
                     style={[styles.cartButton, item.status === 'out-of-stock' && styles.disabledButton]}
                     onPress={() => {
                       if (item.status !== 'out-of-stock') {
-                        router.push('/cart');
+                        handleAddToCart(item.id);
                       }
                     }}>
                     <Text style={[styles.cartText, item.status === 'out-of-stock' && styles.disabledText]}>
