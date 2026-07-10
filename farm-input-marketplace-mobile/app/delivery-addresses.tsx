@@ -1,10 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  addDeliveryAddress,
+  deleteDeliveryAddress,
+  listDeliveryAddresses,
+  setDefaultDeliveryAddress,
+  type DeliveryAddress,
+} from '@/api/delivery-addresses';
 import { AppHeader } from '@/components/marketplace/AppHeader';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 const deliveryAddresses = [
   {
@@ -40,6 +49,50 @@ const addressTypeIcons = {
 };
 
 export default function DeliveryAddressesScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [addresses, setAddresses] = useState<DeliveryAddress[]>(
+    deliveryAddresses.map((address) => ({
+      ...address,
+      id: String(address.id),
+      userId: user?.id ?? 'guest',
+    })),
+  );
+
+  async function loadAddresses() {
+    try {
+      const response = await listDeliveryAddresses(user?.id);
+      if (response.items.length > 0) setAddresses(response.items);
+    } catch {
+      // Keep static fallback addresses.
+    }
+  }
+
+  useEffect(() => {
+    loadAddresses();
+  }, [user?.id]);
+
+  async function handleAdd() {
+    await addDeliveryAddress({
+      userId: user?.id ?? 'guest',
+      type: 'Farm',
+      label: 'Farm Location',
+      address: 'New farm delivery address',
+      phone: user?.phone ?? '+256 XXX XXX XXX',
+      isDefault: addresses.length === 0,
+    });
+    await loadAddresses();
+  }
+
+  async function handleDelete(id: string) {
+    await deleteDeliveryAddress(id, user?.id);
+    await loadAddresses();
+  }
+
+  async function handleDefault(id: string) {
+    await setDefaultDeliveryAddress(id, user?.id);
+    await loadAddresses();
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <AppHeader back title="Delivery Addresses" />
@@ -48,7 +101,7 @@ export default function DeliveryAddressesScreen() {
         <Text style={styles.subtitle}>Manage your delivery locations</Text>
 
         <View style={styles.addressList}>
-          {deliveryAddresses.map((addr) => (
+          {addresses.map((addr) => (
             <View key={addr.id} style={[styles.addressCard, marketplaceShadows.card]}>
               <View style={styles.addressHeader}>
                 <View style={styles.addressTypeBox}>
@@ -73,11 +126,11 @@ export default function DeliveryAddressesScreen() {
               <Text style={styles.phoneText}>{addr.phone}</Text>
 
               <View style={styles.addressActions}>
-                <Pressable style={styles.editButton}>
+                <Pressable style={styles.editButton} onPress={() => handleDefault(addr.id)}>
                   <Ionicons name="create-outline" size={16} color={marketplaceColors.primaryDark} />
-                  <Text style={styles.editText}>Edit</Text>
+                  <Text style={styles.editText}>Default</Text>
                 </Pressable>
-                <Pressable style={styles.deleteButton}>
+                <Pressable style={styles.deleteButton} onPress={() => handleDelete(addr.id)}>
                   <Ionicons name="trash-outline" size={16} color="#EF4444" />
                   <Text style={styles.deleteText}>Delete</Text>
                 </Pressable>
@@ -88,7 +141,7 @@ export default function DeliveryAddressesScreen() {
 
         <View style={styles.divider} />
 
-        <Pressable style={styles.addButton}>
+        <Pressable style={styles.addButton} onPress={handleAdd}>
           <Ionicons name="add-circle-outline" size={20} color={marketplaceColors.primaryDark} />
           <Text style={styles.addText}>Add New Address</Text>
         </Pressable>
