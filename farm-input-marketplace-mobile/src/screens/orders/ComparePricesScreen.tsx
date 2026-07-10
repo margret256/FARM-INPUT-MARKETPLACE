@@ -1,9 +1,11 @@
 // ComparePricesScreen.tsx
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { compareProductPrices } from '@/api/products';
 import { AppHeader } from '@/components/marketplace/AppHeader';
 import { appImages } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
@@ -48,6 +50,42 @@ const dealers = [
 ];
 
 export function ComparePricesScreen() {
+  const [dealerList, setDealerList] = useState(dealers);
+  const [productTitle, setProductTitle] = useState('Premium Urea Fertilizer');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadDealers() {
+      try {
+        const response = await compareProductPrices();
+        if (!mounted || response.items.length === 0) return;
+        setProductTitle(response.items[0].name);
+        setDealerList(
+          response.items.map((product, index) => ({
+            id: index + 1,
+            name: product.dealer?.businessName ?? 'AgroConnect Dealer',
+            icon: 'storefront-outline',
+            rating: 0,
+            reviews: 0,
+            price: product.price,
+            delivery: 0,
+            stock: product.statusDetail,
+            status: product.stockStatus === 'LOW_STOCK' ? 'low-stock' : 'in-stock',
+            isBestValue: index === 0,
+          })),
+        );
+      } catch {
+        // Keep local fallback comparison data.
+      }
+    }
+
+    loadDealers();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <SafeAreaView style={styles.screen}>
       <AppHeader back title="Compare Prices" />
@@ -56,7 +94,7 @@ export function ComparePricesScreen() {
         <View style={[styles.productCard, marketplaceShadows.card]}>
           <Image source={appImages.betterYields} style={styles.productImage} />
           <View style={styles.productInfo}>
-            <Text style={styles.productTitle}>Premium Urea Fertilizer</Text>
+            <Text style={styles.productTitle}>{productTitle}</Text>
             <View style={styles.productTags}>
               <View style={styles.tag}>
                 <Text style={styles.tagText}>Fertilizer</Text>
@@ -80,7 +118,7 @@ export function ComparePricesScreen() {
         </View>
 
         {/* Dealer Cards */}
-        {dealers.map((dealer) => (
+        {dealerList.map((dealer) => (
           <View key={dealer.id} style={[styles.dealerCard, marketplaceShadows.card, dealer.isBestValue && styles.dealerCardBestValue]}>
             {dealer.isBestValue && (
               <View style={styles.bestValueBadge}>
@@ -144,7 +182,7 @@ export function ComparePricesScreen() {
         {/* Total and Checkout */}
         <View style={styles.totalSection}>
           <Text style={styles.totalLabel}>Total Selected</Text>
-          <Text style={styles.totalPrice}>UGX 87,000</Text>
+          <Text style={styles.totalPrice}>UGX {(dealerList[0]?.price + dealerList[0]?.delivery).toLocaleString()}</Text>
           <View style={styles.qtySelector}>
             <Pressable style={styles.qtyButton}>
               <Text style={styles.qtyButtonText}>−</Text>
