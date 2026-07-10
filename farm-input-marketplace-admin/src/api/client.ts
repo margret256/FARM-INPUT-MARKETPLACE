@@ -225,6 +225,33 @@ export const auth = {
   isAuthenticated,
   isAdmin,
 };
+
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const token = getAuthToken();
+  if (!token) throw new Error('Authentication required');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let message = `Upload failed with status ${response.status}`;
+    try {
+      const body = await response.json();
+      message = body?.message ?? message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<T>;
+}
  
 // API endpoints organized by resource
 export const api = {
@@ -236,6 +263,8 @@ export const api = {
     update: (id: string, data: any) => patch(`/users/${id}`, data),
     delete: (id: string) => del(`/users/${id}`),
     getProfile: () => get<any>('/users/profile'),
+    updateProfile: (data: any) => patch<any>('/users/profile', data),
+    uploadAvatar: (file: File) => uploadFile<{ avatarUrl: string }>('/users/profile/avatar', file),
   },
  
   dealers: {
@@ -269,4 +298,6 @@ export const api = {
     getAll: () => get<any[]>('/payments'),
     getById: (id: string) => get<any>(`/payments/${id}`),
   },
+
+  
 };
