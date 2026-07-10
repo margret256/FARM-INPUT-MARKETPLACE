@@ -1,6 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { formatUgx } from '@/api/marketplace-adapters';
+import { trackOrder } from '@/api/orders';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { appImages } from '@/constants/mock-marketplace';
@@ -16,6 +20,38 @@ const timeline = [
 ] as const;
 
 export function TrackOrderScreen() {
+  const params = useLocalSearchParams<{ id?: string }>();
+  const [tracking, setTracking] = useState<any>();
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadTracking() {
+      if (!params.id) return;
+      try {
+        const response = await trackOrder(params.id);
+        if (mounted) setTracking(response);
+      } catch {
+        // Keep static fallback tracking.
+      }
+    }
+
+    loadTracking();
+    return () => {
+      mounted = false;
+    };
+  }, [params.id]);
+
+  const dynamicTimeline =
+    tracking?.timeline?.map((step: any) => [
+      step.label,
+      step.timestamp ? new Date(step.timestamp).toLocaleString() : step.completed ? 'Completed' : 'Pending',
+      step.completed,
+      step.status === 'SHIPPED' ? 'car-outline' : step.completed ? 'checkmark' : 'bicycle-outline',
+    ]) ?? timeline;
+  const orderNumber = tracking?.order?.number ? `Order #${tracking.order.number}` : 'Order #AG-99821';
+  const total = tracking?.order?.total ? formatUgx(tracking.order.total) : undefined;
+
   return (
     <StaticScreen>
       <AppScreen back help title="Track Order">
@@ -32,18 +68,18 @@ export function TrackOrderScreen() {
 
         <View style={[styles.arrivalCard, marketplaceShadows.card]}>
           <Text style={styles.arrivalLabel}>ESTIMATED ARRIVAL</Text>
-          <Text style={styles.arrivalTime}>Oct 12, 10:00 AM</Text>
+          <Text style={styles.arrivalTime}>{tracking?.order?.status === 'DELIVERED' ? 'Delivered' : 'In progress'}</Text>
           <View style={styles.progressTrack}>
             <View style={styles.progressFill} />
           </View>
           <View style={styles.arrivalRow}>
-            <Text style={styles.orderNumber}>Order #AG-99821</Text>
-            <Text style={styles.distance}>6.4 km away</Text>
+            <Text style={styles.orderNumber}>{orderNumber}</Text>
+            <Text style={styles.distance}>{total ?? '6.4 km away'}</Text>
           </View>
         </View>
 
         <View style={styles.timeline}>
-          {timeline.map(([title, subtitle, completed, icon], index) => (
+          {dynamicTimeline.map(([title, subtitle, completed, icon]: any, index: number) => (
             <View key={title} style={styles.timelineItem}>
               <View style={styles.timelineLeft}>
                 {index < timeline.length - 1 ? <View style={[styles.verticalLine, !completed && styles.mutedLine]} /> : null}
