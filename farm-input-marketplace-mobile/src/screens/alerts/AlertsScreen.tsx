@@ -1,10 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { deleteAlert, listAlerts, markAlertRead, markAllAlertsRead } from '@/api/alerts';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { appImages } from '@/constants/mock-marketplace';
 import { marketplaceColors } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 type Alert = {
   id: string;
@@ -61,6 +64,54 @@ const iconConfig: Record<Alert['type'], { bg: string; icon: string; color: strin
 const chips = ['All', 'Orders', 'Payments', 'Offers'];
 
 export function AlertsScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [alertList, setAlertList] = useState(alerts);
+
+  async function loadAlerts() {
+    try {
+      const response = await listAlerts({ userId: user?.id });
+      if (response.items.length === 0) return;
+      setAlertList(
+        response.items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          message: item.message,
+          time: new Date(item.createdAt).toLocaleString(),
+          type: item.type.includes('payment')
+            ? 'payment'
+            : item.type.includes('offer')
+              ? 'offer'
+              : item.type.includes('profile')
+                ? 'profile'
+                : 'order',
+          unread: !item.read,
+          read: item.read,
+        })),
+      );
+    } catch {
+      // Keep local fallback alerts.
+    }
+  }
+
+  useEffect(() => {
+    loadAlerts();
+  }, [user?.id]);
+
+  async function handleMarkAllRead() {
+    await markAllAlertsRead(user?.id);
+    await loadAlerts();
+  }
+
+  async function handleMarkRead(id: string) {
+    await markAlertRead(id, user?.id);
+    await loadAlerts();
+  }
+
+  async function handleDelete(id: string) {
+    await deleteAlert(id, user?.id);
+    await loadAlerts();
+  }
+
   return (
     <StaticScreen>
       <AppScreen title="AgroMarket">
@@ -70,7 +121,7 @@ export function AlertsScreen() {
             <Text style={styles.heading}>Alerts</Text>
             <Text style={styles.subheading}>Stay updated on your farm activity</Text>
           </View>
-          <Pressable>
+          <Pressable onPress={handleMarkAllRead}>
             <Text style={styles.markAll}>Mark all as read</Text>
           </Pressable>
         </View>
@@ -90,7 +141,7 @@ export function AlertsScreen() {
 
         {/* Alert cards */}
         <View style={styles.list}>
-          {alerts.map((alert) => {
+          {alertList.map((alert) => {
             const cfg = iconConfig[alert.type];
             return (
               <View
@@ -129,12 +180,12 @@ export function AlertsScreen() {
                     {/* Actions */}
                     <View style={styles.actions}>
                       {alert.unread && (
-                        <Pressable style={styles.actionBtn}>
+                        <Pressable style={styles.actionBtn} onPress={() => handleMarkRead(alert.id)}>
                           <Ionicons name="checkmark-done-outline" size={14} color={marketplaceColors.primary} />
                           <Text style={styles.markReadText}>Mark as read</Text>
                         </Pressable>
                       )}
-                      <Pressable style={styles.actionBtn}>
+                      <Pressable style={styles.actionBtn} onPress={() => handleDelete(alert.id)}>
                         <Ionicons name="trash-outline" size={14} color="#D32F2F" />
                         <Text style={styles.deleteText}>Delete</Text>
                       </Pressable>
