@@ -1,10 +1,14 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { formatUgx } from '@/api/marketplace-adapters';
+import { initiateMobileMoney } from '@/api/payments';
 import { AppHeader } from '@/components/marketplace/AppHeader';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 const safetyItems = [
   ['shield-checkmark-outline', 'End-to-End Encryption', 'Your credentials are never stored on our servers.'],
@@ -12,6 +16,27 @@ const safetyItems = [
 ] as const;
 
 export function MobileMoneyPaymentScreen() {
+  const params = useLocalSearchParams<{ amount?: string; orderId?: string }>();
+  const user = useAuthStore((state) => state.user);
+  const [phone, setPhone] = useState(user?.phone?.replace(/^\+256/, '') ?? '');
+  const amount = Number(params.amount ?? 105000);
+  const displayAmount = formatUgx(amount);
+
+  async function handlePay() {
+    try {
+      await initiateMobileMoney({
+        userId: user?.id,
+        orderId: params.orderId,
+        amount,
+        phone: phone.startsWith('+') ? phone : `+256${phone.replace(/\D/g, '')}`,
+        provider: 'MTN Uganda',
+      });
+      router.push('/payment-success');
+    } catch {
+      Alert.alert('Payment failed', 'Could not initiate mobile money payment.');
+    }
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <AppHeader back title="Checkout" />
@@ -21,11 +46,11 @@ export function MobileMoneyPaymentScreen() {
             <Text style={styles.cardLabel}>TOTAL AMOUNT</Text>
             <Text style={styles.pending}>Pending Payment</Text>
           </View>
-          <Text style={styles.amount}>UGX 105,000</Text>
+          <Text style={styles.amount}>{displayAmount}</Text>
           <View style={styles.divider} />
           <View style={styles.purchaseRow}>
             <MaterialCommunityIcons name="tractor" size={18} color={marketplaceColors.primaryDark} />
-            <Text style={styles.purchaseText}>AgroMarket Purchase #29482</Text>
+            <Text style={styles.purchaseText}>AgroMarket Purchase {params.orderId ? `#${params.orderId.slice(-6).toUpperCase()}` : '#29482'}</Text>
           </View>
         </View>
 
@@ -50,7 +75,14 @@ export function MobileMoneyPaymentScreen() {
         <View style={styles.phoneBox}>
           <Text style={styles.countryCode}>+256</Text>
           <View style={styles.phoneDivider} />
-          <Text style={styles.phonePlaceholder}>770 000 000</Text>
+          <TextInput
+            style={styles.phoneInput}
+            keyboardType="phone-pad"
+            placeholder="770 000 000"
+            placeholderTextColor="#7C8592"
+            value={phone}
+            onChangeText={setPhone}
+          />
         </View>
 
         <View style={styles.notice}>
@@ -75,10 +107,10 @@ export function MobileMoneyPaymentScreen() {
         </View>
       </ScrollView>
       <View style={styles.bottom}>
-        <Pressable onPress={() => router.push('/payment-success')} style={styles.payButton}>
+        <Pressable onPress={handlePay} style={styles.payButton}>
           <Text style={styles.payText}>Pay Now</Text>
           <View style={styles.payDivider} />
-          <Text style={styles.payText}>UGX 105,000</Text>
+          <Text style={styles.payText}>{displayAmount}</Text>
         </Pressable>
         <Text style={styles.gateway}>Secured by AgroMarket FinTrust Gateway</Text>
       </View>
@@ -149,7 +181,7 @@ const styles = StyleSheet.create({
   },
   countryCode: { color: '#101710', fontSize: 15, fontWeight: '800' },
   phoneDivider: { width: 1, height: 22, backgroundColor: '#B8C6B1' },
-  phonePlaceholder: { color: '#7C8592', fontSize: 15 },
+  phoneInput: { flex: 1, color: '#101710', fontSize: 15 },
   notice: {
     backgroundColor: '#E2E8DC',
     borderRadius: 10,
