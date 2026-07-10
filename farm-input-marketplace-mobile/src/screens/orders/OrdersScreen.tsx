@@ -1,13 +1,59 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { formatUgx, productImage } from '@/api/marketplace-adapters';
+import { listOrders } from '@/api/orders';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { appImages, orderItems } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 export function OrdersScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [orders, setOrders] = useState(
+    orderItems.map((order, index) => ({
+      id: `fallback-${index}`,
+      number: order.number,
+      title: order.title,
+      status: order.status,
+      total: order.total,
+      statusColor: order.statusColor,
+      images: order.images,
+    })),
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadOrders() {
+      try {
+        const response = await listOrders({ userId: user?.id });
+        if (!mounted || response.items.length === 0) return;
+        setOrders(
+          response.items.map((order, index) => ({
+            id: order.id,
+            number: `#${order.number}`,
+            title: order.items?.[0]?.product?.name ?? 'Marketplace order',
+            status: order.status.replace(/_/g, ' '),
+            total: formatUgx(order.total),
+            statusColor: order.status === 'DELIVERED' ? '#99F09B' : '#FFD992',
+            images: [productImage(index)],
+          })),
+        );
+      } catch {
+        // Keep bundled fallback orders.
+      }
+    }
+
+    loadOrders();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
   return (
     <StaticScreen>
       <AppScreen title="AgroMarket">
@@ -19,7 +65,7 @@ export function OrdersScreen() {
           <Text style={styles.tab}>Cancelled</Text>
         </View>
         <View style={styles.orderList}>
-          {orderItems.map((order) => (
+          {orders.map((order) => (
             <View key={order.number} style={[styles.orderCard, marketplaceShadows.card]}>
               <View style={styles.orderTop}>
                 <View style={styles.orderTopLeft}>
@@ -47,7 +93,15 @@ export function OrdersScreen() {
                   <Text style={styles.totalLabel}>Total Amount</Text>
                   <Text style={styles.totalText}>{order.total}</Text>
                 </View>
-                <Pressable onPress={() => router.push('/track-order')} style={styles.detailsButton}>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: '/track-order',
+                      params: order.id.startsWith('fallback-') ? undefined : { id: order.id },
+                    })
+                  }
+                  style={styles.detailsButton}
+                >
                   <Text style={styles.detailsText}>View Details</Text>
                 </Pressable>
               </View>
