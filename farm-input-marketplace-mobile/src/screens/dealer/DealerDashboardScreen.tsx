@@ -2,13 +2,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 
+import { listAlerts } from '@/api/alerts';
+import { formatUgx } from '@/api/marketplace-adapters';
+import { listOrders } from '@/api/orders';
+import { getProductStats } from '@/api/products';
 import { AppHeader } from '@/components/marketplace/AppHeader';
 import { DealerFloatingTabBar } from '@/components/marketplace/DealerFloatingTabBar';
 import { appImages } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
-const stats = [
+const fallbackStats = [
   { label: 'Total Sales', value: '1,248', icon: 'trending-up-outline', iconColor: marketplaceColors.primary, dark: false },
   { label: 'Orders', value: '86', icon: 'bag-handle-outline', iconColor: '#F57C00', dark: false },
   { label: 'Revenue', value: '$42.5k', icon: 'wallet-outline', iconColor: '#FFFFFF', dark: true },
@@ -29,6 +35,55 @@ const activity = [
 ];
 
 export function DealerDashboardScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [dashboardStats, setDashboardStats] = useState(fallbackStats);
+  const [recentActivity, setRecentActivity] = useState(activity);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadDashboard() {
+      try {
+        const scope = { dealerId: user?.dealer?.id, userId: user?.dealer?.id ? undefined : user?.id };
+        const [productStats, orderData, alertData] = await Promise.all([
+          getProductStats(scope),
+          listOrders({ dealerId: user?.dealer?.id }),
+          listAlerts({ userId: user?.id }),
+        ]);
+
+        if (!mounted) return;
+
+        setDashboardStats([
+          { ...fallbackStats[0], value: String(productStats.totalSales) },
+          { ...fallbackStats[1], value: String(orderData.total ?? productStats.orders) },
+          { ...fallbackStats[2], value: formatUgx(productStats.revenue) },
+          { ...fallbackStats[3], value: String(productStats.inStock) },
+        ]);
+
+        if (alertData.items.length > 0) {
+          setRecentActivity(
+            alertData.items.slice(0, 3).map((item) => ({
+              icon: item.type.includes('payment') ? 'wallet-outline' : item.type.includes('stock') ? 'warning-outline' : 'checkmark-circle-outline',
+              iconColor: item.type.includes('stock') ? '#D32F2F' : marketplaceColors.primary,
+              title: item.title,
+              subtitle: `${item.message} • ${new Date(item.createdAt).toLocaleString()}`,
+              value: item.read ? 'Read' : 'New',
+              valueColor: item.read ? '#101710' : marketplaceColors.primary,
+              badge: !item.read,
+            })),
+          );
+        }
+      } catch {
+        // Keep local dashboard fallback while the API is unavailable.
+      }
+    }
+
+    loadDashboard();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, user?.dealer?.id]);
+
   return (
     <SafeAreaView style={styles.screen}>
        <AppHeader title="AgroConnect" hideActions={true} />
@@ -40,7 +95,7 @@ export function DealerDashboardScreen() {
 
         {/* Stats grid */}
         <View style={styles.statsGrid}>
-          {stats.map((stat) => (
+          {dashboardStats.map((stat) => (
             <View key={stat.label} style={[styles.statCard, stat.dark && styles.statCardDark, marketplaceShadows.card]}>
               <Ionicons name={stat.icon as any} size={20} color={stat.iconColor} />
               <Text style={[styles.statLabel, stat.dark && styles.statLabelDark]}>{stat.label}</Text>
@@ -89,7 +144,7 @@ export function DealerDashboardScreen() {
           </Pressable>
         </View>
         <View style={[styles.activityCard, marketplaceShadows.card]}>
-          {activity.map((item, i) => (
+          {recentActivity.map((item, i) => (
             <View key={item.title}>
               <View style={styles.activityRow}>
                 <View style={styles.activityIcon}>
