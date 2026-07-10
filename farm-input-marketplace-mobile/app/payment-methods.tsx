@@ -1,10 +1,13 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { addPaymentMethod, deletePaymentMethod, listPaymentMethods, type PaymentMethod } from '@/api/payments';
 import { AppHeader } from '@/components/marketplace/AppHeader';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 const paymentMethods = [
   {
@@ -34,6 +37,46 @@ const paymentMethods = [
 ];
 
 export default function PaymentMethodsScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [methods, setMethods] = useState<PaymentMethod[]>(
+    paymentMethods.map((method) => ({
+      id: String(method.id),
+      userId: user?.id ?? 'guest',
+      type: method.type,
+      provider: method.provider,
+      identifier: method.identifier,
+      isDefault: method.isDefault,
+    })),
+  );
+
+  async function loadMethods() {
+    try {
+      const response = await listPaymentMethods(user?.id);
+      setMethods(response);
+    } catch {
+      // Keep static fallback methods.
+    }
+  }
+
+  useEffect(() => {
+    loadMethods();
+  }, [user?.id]);
+
+  async function handleAdd(type: string) {
+    await addPaymentMethod({
+      userId: user?.id,
+      type,
+      provider: type === 'Mobile Money' ? 'MTN Uganda' : type,
+      identifier: type === 'Mobile Money' ? user?.phone ?? '+256 XXX XXX XXX' : 'New method',
+    });
+    await loadMethods();
+  }
+
+  async function handleDelete(id: string) {
+    await deletePaymentMethod(id, user?.id);
+    await loadMethods();
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <AppHeader back title="Payment Methods" />
@@ -42,11 +85,11 @@ export default function PaymentMethodsScreen() {
         <Text style={styles.subtitle}>Manage your payment options</Text>
 
         <View style={styles.methodsList}>
-          {paymentMethods.map((method) => (
+          {methods.map((method) => (
             <View key={method.id} style={[styles.methodCard, marketplaceShadows.card]}>
               <View style={styles.methodLeft}>
                 <View style={styles.methodIcon}>
-                  <Ionicons name={method.icon as any} size={20} color={marketplaceColors.primaryDark} />
+                  <Ionicons name={method.type.includes('Card') ? 'card-outline' : method.type.includes('Wallet') ? 'wallet-outline' : 'phone-portrait-outline'} size={20} color={marketplaceColors.primaryDark} />
                 </View>
                 <View style={styles.methodInfo}>
                   <View style={styles.methodHeader}>
@@ -63,7 +106,7 @@ export default function PaymentMethodsScreen() {
                 <Pressable style={styles.actionButton}>
                   <Ionicons name="create-outline" size={18} color={marketplaceColors.primaryDark} />
                 </Pressable>
-                <Pressable style={styles.actionButton}>
+                <Pressable style={styles.actionButton} onPress={() => handleDelete(method.id)}>
                   <Ionicons name="trash-outline" size={18} color="#EF4444" />
                 </Pressable>
               </View>
@@ -74,7 +117,7 @@ export default function PaymentMethodsScreen() {
         <View style={styles.divider} />
         <Text style={styles.sectionTitle}>Add Payment Method</Text>
         
-        <Pressable style={styles.addMethodButton}>
+        <Pressable style={styles.addMethodButton} onPress={() => handleAdd('Mobile Money')}>
           <View style={styles.addIconBox}>
             <Ionicons name="phone-portrait-outline" size={18} color="#FFFFFF" />
           </View>
@@ -82,7 +125,7 @@ export default function PaymentMethodsScreen() {
           <Ionicons name="chevron-forward-outline" size={20} color={marketplaceColors.inkSoft} />
         </Pressable>
 
-        <Pressable style={styles.addMethodButton}>
+        <Pressable style={styles.addMethodButton} onPress={() => handleAdd('Bank Card')}>
           <View style={styles.addIconBox}>
             <Ionicons name="card-outline" size={18} color="#FFFFFF" />
           </View>
@@ -90,7 +133,7 @@ export default function PaymentMethodsScreen() {
           <Ionicons name="chevron-forward-outline" size={20} color={marketplaceColors.inkSoft} />
         </Pressable>
 
-        <Pressable style={styles.addMethodButton}>
+        <Pressable style={styles.addMethodButton} onPress={() => handleAdd('Bank Transfer')}>
           <View style={styles.addIconBox}>
             <Ionicons name="wallet-outline" size={18} color="#FFFFFF" />
           </View>
