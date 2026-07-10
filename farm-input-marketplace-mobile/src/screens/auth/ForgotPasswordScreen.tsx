@@ -1,6 +1,8 @@
-import { Link } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Link, router } from 'expo-router';
+import { useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { forgotPassword } from '@/services/auth.service';
 import { AuthLayout } from '@/screens/auth/AuthLayout';
 import { AuthHero } from '@/screens/auth/AuthHero';
 import { AuthTextField } from '@/components/ui/auth-text-field';
@@ -9,6 +11,29 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { marketplaceColors, marketplaceImages } from '@/constants/marketplace';
 
 export function ForgotPasswordScreen() {
+  const [identifier, setIdentifier] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSendCode() {
+    if (!identifier.trim()) {
+      Alert.alert('Missing contact', 'Enter your email or phone number.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await forgotPassword(identifier);
+      router.push({
+        pathname: '/auth/reset-password',
+        params: { identifier },
+      });
+    } catch {
+      Alert.alert('Request failed', 'Could not request a reset code.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <AuthLayout>
       <ScreenHeader />
@@ -23,9 +48,17 @@ export function ForgotPasswordScreen() {
           icon="mail-outline"
           keyboardType="email-address"
           label="Email or Phone Number"
+          onChangeText={setIdentifier}
           placeholder="e.g. farmer@field.com"
+          value={identifier}
         />
-        <MarketplaceButton title="Send Reset Code" icon="arrow-forward" style={styles.button} />
+        <MarketplaceButton
+          title="Send Reset Code"
+          icon="arrow-forward"
+          loading={loading}
+          onPress={handleSendCode}
+          style={styles.button}
+        />
       </View>
       <Link href="/auth/login" asChild>
         <Pressable style={styles.backLink}>
