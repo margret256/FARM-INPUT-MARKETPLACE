@@ -1,9 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { Alert } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { addCartItem } from '@/api/cart';
+import { addWishlistItem } from '@/api/wishlist';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
 import type { ProductItem } from '@/constants/mock-marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 type ProductCardProps = {
   product: ProductItem;
@@ -11,15 +15,35 @@ type ProductCardProps = {
 };
 
 export function ProductCard({ product, compact = false }: ProductCardProps) {
+  const user = useAuthStore((state) => state.user);
+
+  async function handleAddToCart() {
+    try {
+      await addCartItem({ userId: user?.id, productId: product.id, quantity: 1 });
+      router.push('/cart');
+    } catch {
+      Alert.alert('Cart unavailable', 'Could not add this product to your cart.');
+    }
+  }
+
+  async function handleWishlist() {
+    try {
+      await addWishlistItem({ userId: user?.id, productId: product.id });
+      router.push('/wishlist');
+    } catch {
+      Alert.alert('Wishlist unavailable', 'Could not save this product.');
+    }
+  }
+
   return (
     <Pressable
-      onPress={() => router.push('/product-details')}
+      onPress={() => router.push({ pathname: '/product-details', params: { id: product.id } })}
       style={[styles.card, compact && styles.compact, marketplaceShadows.card]}>
       <View>
         <Image source={product.image} style={[styles.image, compact && styles.compactImage]} />
         {product.badge ? <Text style={styles.badge}>{product.badge}</Text> : null}
         <View style={styles.heart}>
-          <Pressable onPress={() => router.push('/wishlist')}>
+          <Pressable onPress={handleWishlist}>
             <Ionicons name="heart-outline" size={18} color={marketplaceColors.primaryDark} />
           </Pressable>
         </View>
@@ -35,7 +59,7 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
         ) : null}
         <View style={styles.row}>
           <Text style={styles.price}>{product.price}</Text>
-          <Pressable style={styles.addButton} onPress={() => router.push('/cart')}>
+          <Pressable style={styles.addButton} onPress={handleAddToCart}>
             <Ionicons name="add" size={19} color="#FFFFFF" />
           </Pressable>
         </View>
