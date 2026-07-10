@@ -16,7 +16,7 @@ function SplashContent() {
         <View style={styles.loadingTrack}>
           <View style={styles.loadingFill} />
         </View>
-         <Pressable style={styles.getStartedButton} onPress={() => router.replace('/role-selection')}>
+         <Pressable style={styles.getStartedButton} onPress={() => router.replace('/onboarding')}>
            <Text style={styles.getStartedButtonText}>Get Started</Text>
          </Pressable>
       </View>
