@@ -1,13 +1,38 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { productToCard } from '@/api/marketplace-adapters';
+import { listProducts } from '@/api/products';
 import { AppScreen, StaticScreen } from '@/components/marketplace/AppScreen';
 import { FloatingTabBar } from '@/components/marketplace/FloatingTabBar';
 import { ProductCard } from '@/components/marketplace/ProductCard';
-import { marketProducts } from '@/constants/mock-marketplace';
+import { marketProducts, type ProductItem } from '@/constants/mock-marketplace';
 import { marketplaceColors } from '@/constants/marketplace';
 
 export function MarketScreen() {
+  const [products, setProducts] = useState<ProductItem[]>(marketProducts);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadProducts() {
+      try {
+        const response = await listProducts();
+        if (mounted && response.items.length > 0) {
+          setProducts(response.items.map(productToCard));
+        }
+      } catch {
+        // Use local fallback data while the API is unavailable.
+      }
+    }
+
+    loadProducts();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <StaticScreen>
       <AppScreen title="AgroMarket">
@@ -24,7 +49,7 @@ export function MarketScreen() {
           <Text style={styles.chip}>Verified Dealers</Text>
         </View>
         <View style={styles.grid}>
-          {marketProducts.map((product) => (
+          {products.map((product) => (
             <View key={product.id} style={styles.gridItem}>
               <ProductCard compact product={product} />
             </View>
