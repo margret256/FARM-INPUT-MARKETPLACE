@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -14,6 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
 import { DealerFloatingTabBar } from '@/components/marketplace/DealerFloatingTabBar';
+import { deleteProduct, getProductStats, listProducts, type DealerProduct, type ProductStats } from '@/api/products';
+import { productImage, formatUgx } from '@/api/marketplace-adapters';
+import { useAuthStore } from '@/store/auth.store';
 
 type StockStatus = 'IN STOCK' | 'LOW STOCK' | 'OUT OF STOCK';
 
@@ -73,9 +76,43 @@ const STATUS_COLORS: Record<StockStatus, { bg: string; text: string }> = {
 };
 
 export function InventoryScreen() {
+  const user = useAuthStore((state) => state.user);
   const [search, setSearch] = useState('');
+  const [apiProducts, setApiProducts] = useState<Product[]>(PRODUCTS);
+  const [stats, setStats] = useState<ProductStats | undefined>();
 
-  const filtered = PRODUCTS.filter(
+  const scope = { dealerId: user?.dealer?.id, userId: user?.dealer?.id ? undefined : user?.id };
+
+  async function loadInventory() {
+    try {
+      const [productsResponse, statsResponse] = await Promise.all([
+        listProducts({ ...scope, search: search || undefined }),
+        getProductStats(scope),
+      ]);
+      setStats(statsResponse);
+      setApiProducts(productsResponse.items.map(toInventoryProduct));
+    } catch {
+      // Keep local fallback inventory.
+    }
+  }
+
+  useEffect(() => {
+    loadInventory();
+  }, [user?.id, user?.dealer?.id]);
+
+  function toInventoryProduct(product: DealerProduct, index: number): Product {
+    return {
+      id: product.id,
+      name: product.name,
+      category: product.category?.name ?? 'Other',
+      sku: product.sku,
+      status: product.statusLabel as StockStatus,
+      statusDetail: product.statusDetail,
+      image: '',
+    };
+  }
+
+  const filtered = apiProducts.filter(
     (p) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.category.toLowerCase().includes(search.toLowerCase()),
@@ -119,19 +156,19 @@ export function InventoryScreen() {
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Total Items</Text>
-            <Text style={styles.statValue}>124</Text>
+            <Text style={styles.statValue}>{stats?.totalItems ?? apiProducts.length}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Low Stock</Text>
-            <Text style={[styles.statValue, { color: '#E65100' }]}>12</Text>
+            <Text style={[styles.statValue, { color: '#E65100' }]}>{stats?.lowStock ?? 0}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Out of Stock</Text>
-            <Text style={[styles.statValue, { color: '#C62828' }]}>3</Text>
+            <Text style={[styles.statValue, { color: '#C62828' }]}>{stats?.outOfStock ?? 0}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Active Value</Text>
-            <Text style={[styles.statValue, { color: marketplaceColors.primaryDark }]}>$14.2k</Text>
+            <Text style={[styles.statValue, { color: marketplaceColors.primaryDark }]}>{formatUgx(stats?.activeValue ?? 0)}</Text>
           </View>
         </View>
 
@@ -149,7 +186,7 @@ export function InventoryScreen() {
                 ]}
               >
                 <View style={styles.productImageWrap}>
-                  <Image source={{ uri: product.image }} style={styles.productImage} />
+                  <Image source={product.image ? { uri: product.image } : productImage(index)} style={styles.productImage} />
                 </View>
                 <View style={styles.productInfo}>
                   <Text style={styles.productName}>{product.name}</Text>
@@ -166,10 +203,16 @@ export function InventoryScreen() {
                   </View>
                 </View>
                 <View style={styles.productActions}>
-                  <Pressable style={styles.actionBtn}>
+                  <Pressable style={styles.actionBtn} onPress={() => router.push({ pathname: '/product-details', params: { id: product.id } })}>
                     <Ionicons name="pencil-outline" size={18} color={marketplaceColors.primary} />
                   </Pressable>
-                  <Pressable style={styles.actionBtn}>
+                  <Pressable
+                    style={styles.actionBtn}
+                    onPress={async () => {
+                      await deleteProduct(product.id, scope);
+                      await loadInventory();
+                    }}
+                  >
                     <Ionicons name="trash-outline" size={18} color="#E53935" />
                   </Pressable>
                   <Pressable style={styles.actionBtn}>
