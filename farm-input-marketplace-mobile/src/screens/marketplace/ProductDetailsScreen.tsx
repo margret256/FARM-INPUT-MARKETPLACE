@@ -1,12 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 
+import { addCartItem } from '@/api/cart';
+import { formatUgx } from '@/api/marketplace-adapters';
+import { getProduct, listProducts, type DealerProduct } from '@/api/products';
+import { listReviews } from '@/api/reviews';
+import { addWishlistItem } from '@/api/wishlist';
 import { AppScreen } from '@/components/marketplace/AppScreen';
 import { appImages } from '@/constants/mock-marketplace';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 const instructions = [
   ['Soil test', 'Determine nitrogen requirements before application to avoid over-saturation.'],
@@ -16,10 +22,68 @@ const instructions = [
 
 export function ProductDetailsScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const user = useAuthStore((state) => state.user);
   const [wishlisted, setWishlisted] = useState(false);
   const [inCart, setInCart] = useState(false);
+  const [product, setProduct] = useState<DealerProduct | undefined>();
+  const [reviewSummary, setReviewSummary] = useState<{ average?: number; total?: number }>();
 
   const bottomBarHeight = 68 + insets.bottom;
+  const title = product?.name ?? 'Premium Urea Fertilizer (46-0-0)';
+  const price = product ? formatUgx(product.price) : 'UGX 85,000';
+  const description =
+    product?.description ??
+    'High-quality nitrogen fertilizer for rapid crop growth and healthy yields. Specifically formulated for East African soil conditions to maximize grain development.';
+  const stockText = product?.stockStatus === 'OUT_OF_STOCK' ? 'Out of\nStock' : product?.stockStatus === 'LOW_STOCK' ? 'Low\nStock' : 'In\nStock';
+  const rating = reviewSummary?.average ?? 4.8;
+  const reviewCount = reviewSummary?.total ?? 120;
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadProduct() {
+      try {
+        const nextProduct = params.id
+          ? await getProduct(params.id)
+          : (await listProducts()).items[0];
+        if (!mounted || !nextProduct) return;
+        setProduct(nextProduct);
+        const reviews = await listReviews({ productId: nextProduct.id });
+        if (mounted) setReviewSummary(reviews.summary);
+      } catch {
+        // Keep static fallback details when the API is unavailable.
+      }
+    }
+
+    loadProduct();
+    return () => {
+      mounted = false;
+    };
+  }, [params.id]);
+
+  async function handleWishlist() {
+    try {
+      if (product) {
+        await addWishlistItem({ userId: user?.id, productId: product.id });
+      }
+      setWishlisted(true);
+    } catch {
+      Alert.alert('Wishlist unavailable', 'Could not save this product.');
+    }
+  }
+
+  async function handleAddToCart() {
+    try {
+      if (product) {
+        await addCartItem({ userId: user?.id, productId: product.id, quantity: 1 });
+      }
+      setInCart(true);
+      router.push('/cart');
+    } catch {
+      Alert.alert('Cart unavailable', 'Could not add this product to your cart.');
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -28,22 +92,22 @@ export function ProductDetailsScreen() {
         <View style={[styles.body, { paddingBottom: bottomBarHeight + 16 }]}>
           <View style={styles.titleRow}>
             <View style={styles.titleBlock}>
-              <Text style={styles.title}>Premium Urea Fertilizer (46-0-0)</Text>
+              <Text style={styles.title}>{title}</Text>
               <View style={styles.starRow}>
                 {[0, 1, 2, 3, 4].map((star) => (
                   <Ionicons key={star} name="star" size={11} color="#8A5A00" />
                 ))}
-                <Text style={styles.reviewText}>4.8 (120 reviews)</Text>
+                <Text style={styles.reviewText}>{rating} ({reviewCount} reviews)</Text>
               </View>
-              <Text style={styles.price}>UGX 85,000</Text>
+              <Text style={styles.price}>{price}</Text>
             </View>
-            <Text style={styles.stock}>In{'\n'}Stock</Text>
+            <Text style={styles.stock}>{stockText}</Text>
           </View>
 
           <View style={styles.descriptionCard}>
             <Text style={styles.cardLabel}>DESCRIPTION</Text>
             <Text style={styles.description}>
-              High-quality nitrogen fertilizer for rapid crop growth and healthy yields. Specifically formulated for East African soil conditions to maximize grain development.
+              {description}
             </Text>
           </View>
 
@@ -61,15 +125,15 @@ export function ProductDetailsScreen() {
           <View style={[styles.dealerCard, marketplaceShadows.card]}>
             <Image source={appImages.agroHub} style={styles.dealerImage} />
             <View style={styles.dealerInfo}>
-              <Text style={styles.dealerName}>Agro-Input Dealer UG</Text>
-              <Text style={styles.dealerMeta}>Kampala, Central Region</Text>
+              <Text style={styles.dealerName}>{product?.dealer?.businessName ?? 'Agro-Input Dealer UG'}</Text>
+              <Text style={styles.dealerMeta}>{product?.category?.name ?? 'Kampala, Central Region'}</Text>
             </View>
             <Ionicons name="chatbox-outline" size={20} color={marketplaceColors.primaryDark} />
           </View>
 
           <View style={styles.ratingsRow}>
             <View>
-              <Text style={styles.bigRating}>4.8</Text>
+              <Text style={styles.bigRating}>{rating}</Text>
               <Text style={styles.outOf}>OUT OF 5</Text>
             </View>
             <View style={styles.ratingBars}>
@@ -96,7 +160,7 @@ export function ProductDetailsScreen() {
             </Text>
           </View>
           <Pressable style={styles.allReviews}>
-            <Text style={styles.allReviewsText}>See all 120 reviews</Text>
+            <Text style={styles.allReviewsText}>See all {reviewCount} reviews</Text>
           </Pressable>
         </View>
       </AppScreen>
@@ -104,7 +168,7 @@ export function ProductDetailsScreen() {
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom || 10, height: bottomBarHeight }]}>
         <Pressable
           style={styles.heartButton}
-          onPress={() => setWishlisted((v) => !v)}
+          onPress={handleWishlist}
           accessibilityLabel={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}>
           <Ionicons
             name={wishlisted ? 'heart' : 'heart-outline'}
@@ -114,7 +178,7 @@ export function ProductDetailsScreen() {
         </Pressable>
 
         <Pressable
-          onPress={() => { setInCart(true); router.push('/cart'); }}
+          onPress={handleAddToCart}
           style={[styles.outlineButton, inCart && styles.outlineButtonActive]}>
           <Text style={[styles.outlineText, inCart && styles.outlineTextActive]}>
             {inCart ? '✓ In Cart' : 'Add to Cart'}
