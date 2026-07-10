@@ -35,14 +35,11 @@ export function DealerOnboardingScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
   const [documents, setDocuments] = useState<{
     license?: UploadedDoc;
     permit?: UploadedDoc;
   }>({});
 
-  // Request location permissions on mount
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -52,12 +49,11 @@ export function DealerOnboardingScreen() {
     })();
   }, []);
 
-  // Get current location
   async function getCurrentLocation() {
     try {
       setLocationLoading(true);
       const { status } = await Location.requestForegroundPermissionsAsync();
-      
+
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Location permission is required to set your business location.');
         return;
@@ -68,10 +64,6 @@ export function DealerOnboardingScreen() {
       });
 
       const { latitude, longitude } = location.coords;
-      setLatitude(latitude);
-      setLongitude(longitude);
-
-      // Reverse geocode to get address
       const address = await reverseGeocode(latitude, longitude);
       setBusinessLocation(address);
 
@@ -84,14 +76,12 @@ export function DealerOnboardingScreen() {
     }
   }
 
-  // Reverse geocode coordinates to address
   async function reverseGeocode(lat: number, lng: number): Promise<string> {
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
       );
       const data = await response.json();
-      
       if (data && data.display_name) {
         return data.display_name;
       }
@@ -131,11 +121,6 @@ export function DealerOnboardingScreen() {
       return;
     }
 
-    if (!latitude || !longitude) {
-      Alert.alert('Location Required', 'Please set your business location by tapping "Get Location".');
-      return;
-    }
-
     if (password.length < 8) {
       Alert.alert('Invalid password', 'Password must be at least 8 characters.');
       return;
@@ -172,10 +157,9 @@ export function DealerOnboardingScreen() {
         email,
         password,
         confirmPassword,
-        latitude,
-        longitude,
         documents: uploadedDocuments,
       };
+
       await registerDealer(payload);
       router.replace({
         pathname: '/auth/otp-verification',
@@ -183,9 +167,10 @@ export function DealerOnboardingScreen() {
       });
     } catch (error: any) {
       console.error('Submission error:', error);
-      const errorMessage = error?.response?.data?.message ||
-                          error?.message ||
-                          'Submission failed. Please try again.';
+      const raw = error?.response?.data?.message;
+      const errorMessage = Array.isArray(raw)
+        ? raw.join('\n')
+        : raw ?? error?.message ?? 'Submission failed. Please try again.';
       Alert.alert('Submission failed', errorMessage);
     } finally {
       setLoading(false);
@@ -204,15 +189,12 @@ export function DealerOnboardingScreen() {
     <SafeAreaView style={styles.screen}>
       <AppHeader title="AgroConnect" hideActions={true} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-
-        {/* Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Dealer Onboarding</Text>
           <Text style={styles.cardSubtitle}>
             Grow your business with AgroConnect. Complete the verification process to start listing your inventory.
           </Text>
 
-          {/* Steps */}
           <View style={styles.stepsRow}>
             {steps.map((step, i) => (
               <View key={step} style={styles.stepItem}>
@@ -228,7 +210,6 @@ export function DealerOnboardingScreen() {
             ))}
           </View>
 
-          {/* Form Fields */}
           <View style={styles.fieldWrap}>
             <View style={styles.fieldLabelRow}>
               <Ionicons name="storefront-outline" size={13} color={marketplaceColors.inkMuted} />
@@ -257,7 +238,6 @@ export function DealerOnboardingScreen() {
             />
           </View>
 
-          {/* Location Field with Get Location Button */}
           <View style={styles.fieldWrap}>
             <View style={styles.fieldLabelRow}>
               <Ionicons name="location-outline" size={13} color={marketplaceColors.inkMuted} />
@@ -272,8 +252,8 @@ export function DealerOnboardingScreen() {
                 onChangeText={setBusinessLocation}
                 editable={true}
               />
-              <TouchableOpacity 
-                style={styles.locationButton} 
+              <TouchableOpacity
+                style={styles.locationButton}
                 onPress={getCurrentLocation}
                 disabled={locationLoading}
                 activeOpacity={0.7}
@@ -288,11 +268,6 @@ export function DealerOnboardingScreen() {
                 )}
               </TouchableOpacity>
             </View>
-            {latitude && longitude && (
-              <Text style={styles.coordinatesText}>
-                📍 {latitude.toFixed(6)}, {longitude.toFixed(6)}
-              </Text>
-            )}
           </View>
 
           <View style={styles.fieldWrap}>
@@ -326,7 +301,6 @@ export function DealerOnboardingScreen() {
             />
           </View>
 
-          {/* Password Field with Toggle */}
           <View style={styles.fieldWrap}>
             <View style={styles.fieldLabelRow}>
               <Ionicons name="lock-closed-outline" size={13} color={marketplaceColors.inkMuted} />
@@ -341,8 +315,8 @@ export function DealerOnboardingScreen() {
                 value={password}
                 onChangeText={setPassword}
               />
-              <TouchableOpacity 
-                style={styles.eyeButton} 
+              <TouchableOpacity
+                style={styles.eyeButton}
                 onPress={() => setShowPassword(!showPassword)}
                 activeOpacity={0.7}
               >
@@ -355,7 +329,6 @@ export function DealerOnboardingScreen() {
             </View>
           </View>
 
-          {/* Confirm Password Field with Toggle */}
           <View style={styles.fieldWrap}>
             <View style={styles.fieldLabelRow}>
               <Ionicons name="refresh-circle-outline" size={13} color={marketplaceColors.inkMuted} />
@@ -370,8 +343,8 @@ export function DealerOnboardingScreen() {
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
               />
-              <TouchableOpacity 
-                style={styles.eyeButton} 
+              <TouchableOpacity
+                style={styles.eyeButton}
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                 activeOpacity={0.7}
               >
@@ -384,13 +357,12 @@ export function DealerOnboardingScreen() {
             </View>
           </View>
 
-          {/* Document Verification */}
           <Text style={styles.docTitle}>Document Verification</Text>
 
           <View style={styles.docWrap}>
             <Text style={styles.docLabel}>Trade License (PDF or JPEG)</Text>
-            <TouchableOpacity 
-              style={styles.uploadBox} 
+            <TouchableOpacity
+              style={styles.uploadBox}
               onPress={() => handleDocumentPick('license')}
               activeOpacity={0.7}
             >
@@ -404,8 +376,8 @@ export function DealerOnboardingScreen() {
 
           <View style={styles.docWrap}>
             <Text style={styles.docLabel}>Business Permit (PDF or JPEG)</Text>
-            <TouchableOpacity 
-              style={styles.uploadBox} 
+            <TouchableOpacity
+              style={styles.uploadBox}
               onPress={() => handleDocumentPick('permit')}
               activeOpacity={0.7}
             >
@@ -417,7 +389,6 @@ export function DealerOnboardingScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Disclaimer */}
           <View style={styles.disclaimer}>
             <Ionicons name="information-circle-outline" size={14} color={marketplaceColors.inkMuted} />
             <Text style={styles.disclaimerText}>
@@ -425,7 +396,6 @@ export function DealerOnboardingScreen() {
             </Text>
           </View>
 
-          {/* Buttons */}
           <MarketplaceButton
             title="Save Draft"
             icon="document-text-outline"
@@ -441,7 +411,6 @@ export function DealerOnboardingScreen() {
             style={styles.submitButton}
           />
 
-          {/* Login redirect */}
           <View style={styles.loginRow}>
             <Text style={styles.loginText}>Already have an account?</Text>
             <TouchableOpacity onPress={() => router.push('/auth/login')}>
@@ -449,7 +418,6 @@ export function DealerOnboardingScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -581,11 +549,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 12,
-  },
-  coordinatesText: {
-    fontSize: 11,
-    color: marketplaceColors.inkMuted,
-    marginTop: 4,
   },
   passwordRow: {
     flexDirection: 'row',
