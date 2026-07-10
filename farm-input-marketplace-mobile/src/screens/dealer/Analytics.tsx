@@ -2,9 +2,14 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 
+import { formatUgx } from '@/api/marketplace-adapters';
+import { listOrders } from '@/api/orders';
+import { getProductStats, listProducts } from '@/api/products';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
 import { DealerFloatingTabBar } from '@/components/marketplace/DealerFloatingTabBar';
+import { useAuthStore } from '@/store/auth.store';
 
 const TOP_SELLERS = [
   { name: 'NPK 15-15-15', value: 'N1.2M', progress: 0.95 },
@@ -20,7 +25,8 @@ const RECENT_ORDERS = [
 ];
 
 export function DealerAnalyticsScreen() {
-  const metricCards = [
+  const user = useAuthStore((state) => state.user);
+  const fallbackMetricCards = [
     {
       label: 'MONTHLY REVENUE',
       value: '₦4.2M',
@@ -54,6 +60,65 @@ export function DealerAnalyticsScreen() {
       iconColor: marketplaceColors.primary,
     },
   ];
+  const [metricCards, setMetricCards] = useState(fallbackMetricCards);
+  const [topSellers, setTopSellers] = useState(TOP_SELLERS);
+  const [recentOrders, setRecentOrders] = useState(RECENT_ORDERS);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAnalytics() {
+      try {
+        const scope = { dealerId: user?.dealer?.id, userId: user?.dealer?.id ? undefined : user?.id };
+        const [stats, products, orders] = await Promise.all([
+          getProductStats(scope),
+          listProducts(scope),
+          listOrders({ dealerId: user?.dealer?.id }),
+        ]);
+        if (!mounted) return;
+
+        setMetricCards([
+          { ...fallbackMetricCards[0], value: formatUgx(stats.revenue), trend: `${stats.totalSales} delivered sales` },
+          { ...fallbackMetricCards[1], value: String(orders.total ?? stats.orders), trend: `${stats.orders} total orders` },
+          { ...fallbackMetricCards[2], value: orders.total ? formatUgx(stats.revenue / Math.max(1, orders.total)) : formatUgx(0) },
+          { ...fallbackMetricCards[3], value: String(stats.inStock), trend: `${stats.lowStock} low stock` },
+        ]);
+
+        if (products.items.length > 0) {
+          const maxValue = Math.max(...products.items.map((item) => item.price * item.stock), 1);
+          setTopSellers(
+            products.items.slice(0, 4).map((product) => ({
+              name: product.name,
+              value: formatUgx(product.price * product.stock),
+              progress: Math.max(0.1, (product.price * product.stock) / maxValue),
+            })),
+          );
+        }
+
+        if (orders.items.length > 0) {
+          setRecentOrders(
+            orders.items.slice(0, 3).map((order) => ({
+              id: `#${order.number}`,
+              customer: order.customer
+                ? `${order.customer.firstName} ${order.customer.lastName}`.replace(' -', '')
+                : 'Customer',
+              location: order.customer?.phone ?? 'Marketplace',
+              status: order.status.replace(/_/g, ' '),
+              statusColor: order.status === 'DELIVERED' ? '#2E7D32' : '#E65100',
+              statusBg: order.status === 'DELIVERED' ? '#E8F5E9' : '#FFF3E0',
+            })),
+          );
+        }
+      } catch {
+        // Keep fallback analytics.
+      }
+    }
+
+    loadAnalytics();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, user?.dealer?.id]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -126,7 +191,7 @@ export function DealerAnalyticsScreen() {
         {/* Top Sellers */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Top Sellers</Text>
-          {TOP_SELLERS.map((item) => (
+          {topSellers.map((item) => (
             <View key={item.name} style={styles.sellerRow}>
               <View style={styles.sellerImageWrap}>
                 <View style={styles.sellerImagePlaceholder} />
@@ -162,7 +227,7 @@ export function DealerAnalyticsScreen() {
             <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'right' }]}>Status</Text>
           </View>
 
-          {RECENT_ORDERS.map((order) => (
+          {recentOrders.map((order) => (
             <View key={order.id} style={styles.recentOrderRow}>
               <Text style={[styles.recentOrderId, { flex: 1 }]}>{order.id}</Text>
               <View style={{ flex: 2 }}>
