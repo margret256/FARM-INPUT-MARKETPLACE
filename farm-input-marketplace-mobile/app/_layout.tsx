@@ -1,21 +1,54 @@
 import '../global.css';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { router, Stack, usePathname, useRootNavigationState } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuthStore } from '@/store/auth.store';
 
 export const unstable_settings = {
   initialRouteName: 'splash',
 };
+
+const PUBLIC_ROUTES = new Set([
+  '/',
+  '/index',
+  '/splash',
+  '/onboarding',
+  '/role-selection',
+  '/dealer/onboarding',
+]);
+
+function isPublicRoute(pathname: string) {
+  return PUBLIC_ROUTES.has(pathname) || pathname.startsWith('/auth/');
+}
+
+function SessionGuard() {
+  const pathname = usePathname();
+  const rootNavigationState = useRootNavigationState();
+  const token = useAuthStore((state) => state.token);
+
+  useEffect(() => {
+    if (!rootNavigationState?.key || token || isPublicRoute(pathname)) {
+      return;
+    }
+
+    router.dismissAll();
+    router.replace('/role-selection');
+  }, [pathname, rootNavigationState?.key, token]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <SessionGuard />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="splash" />
