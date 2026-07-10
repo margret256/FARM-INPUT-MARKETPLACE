@@ -9,9 +9,12 @@ export type AuthUser = {
   phone: string;
   role: UserRole;
   status: UserStatus;
+  avatarUrl?: string | null;
   dealer?: {
     id: string;
     businessName: string;
+    phone?: string;
+    address?: string;
     verificationStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   };
 };
