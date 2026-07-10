@@ -1,9 +1,12 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
+import { listAlerts, markAlertRead } from '@/api/alerts';
 import { marketplaceColors, marketplaceShadows } from '@/constants/marketplace';
+import { useAuthStore } from '@/store/auth.store';
 
 const NOTIFICATIONS = [
   {
@@ -45,6 +48,52 @@ const NOTIFICATIONS = [
 ];
 
 export function DealerNotificationsScreen() {
+  const user = useAuthStore((state) => state.user);
+  const [notifications, setNotifications] = useState(NOTIFICATIONS);
+
+  async function loadNotifications() {
+    try {
+      const response = await listAlerts({ userId: user?.id });
+      if (response.items.length === 0) return;
+      setNotifications(
+        response.items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          body: item.message,
+          time: new Date(item.createdAt).toLocaleString(),
+          color: item.type.includes('payment')
+            ? '#2E7D32'
+            : item.type.includes('stock')
+              ? '#E53935'
+              : marketplaceColors.primary,
+          icon: item.type.includes('payment')
+            ? 'checkmark-circle-outline'
+            : item.type.includes('stock')
+              ? 'warning-outline'
+              : 'receipt-outline',
+          unread: !item.read,
+        })),
+      );
+    } catch {
+      // Keep local fallback notifications.
+    }
+  }
+
+  useEffect(() => {
+    loadNotifications();
+  }, [user?.id]);
+
+  async function handleOpen(id: string) {
+    try {
+      await markAlertRead(id, user?.id);
+      await loadNotifications();
+    } catch {
+      setNotifications((current) =>
+        current.map((item) => (item.id === id ? { ...item, unread: false } : item)),
+      );
+    }
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -54,8 +103,8 @@ export function DealerNotificationsScreen() {
         </Text>
 
         <View style={styles.list}>
-          {NOTIFICATIONS.map((item) => (
-            <Pressable key={item.id} style={[styles.card, marketplaceShadows.card]}>
+          {notifications.map((item) => (
+            <Pressable key={item.id} style={[styles.card, marketplaceShadows.card]} onPress={() => handleOpen(item.id)}>
               <View style={[styles.iconWrap, { backgroundColor: `${item.color}14` }]}>
                 <Ionicons name={item.icon as any} size={20} color={item.color} />
               </View>
