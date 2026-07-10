@@ -51,9 +51,9 @@ export function OtpVerificationScreen() {
       const response = await verifyOtp({ identifier, code });
       await setSession(response.accessToken, response.user);
       if (role === 'dealer' || response.user.role === 'DEALER') {
-        router.replace('/auth/login');
+        router.replace('/dealer/dashboard');
       } else {
-        router.replace('/home' as any);
+        router.replace('/tabs/home' as any);
       }
     } catch (error) {
       Alert.alert('Verification failed', getApiErrorMessage(error, 'Try again in a moment.'));
