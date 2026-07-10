@@ -87,6 +87,22 @@ export async function listProducts(params: ListProductsParams = {}) {
   return response.data;
 }
 
+export async function getProduct(id: string) {
+  const response = await apiClient.get<DealerProduct>(`/products/${id}`);
+  return response.data;
+}
+
+export async function compareProductPrices(params: ListProductsParams & { productId?: string } = {}) {
+  const response = await apiClient.get<{
+    items: DealerProduct[];
+    total: number;
+    lowestPrice: number;
+    highestPrice: number;
+    averagePrice: number;
+  }>('/products/compare-prices', { params });
+  return response.data;
+}
+
 export async function getProductStats(params: DealerProductScope = {}) {
   const response = await apiClient.get<ProductStats>('/products/stats', {
     params,
